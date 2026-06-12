@@ -53,8 +53,13 @@
 
     <!-- 履歴 -->
     <div class="ed-group" role="group" aria-label="History">
-      <button class="ed-btn" id="btn-undo" title="元に戻す (Ctrl+Z)">↩</button>
-      <button class="ed-btn" id="btn-redo" title="やり直す (Ctrl+Y)">↪</button>
+      <!-- 文字「↩↪」はiOS/Androidで絵文字として描画されるため、SVGで描く -->
+      <button class="ed-btn ed-btn-icon" id="btn-undo" title="元に戻す (Ctrl+Z)" aria-label="元に戻す">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 5L4 10l5 5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><path d="M4 10h10.5a5.5 5.5 0 0 1 0 11H11" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+      </button>
+      <button class="ed-btn ed-btn-icon" id="btn-redo" title="やり直す (Ctrl+Y)" aria-label="やり直す">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l5 5-5 5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><path d="M20 10H9.5a5.5 5.5 0 0 0 0 11H13" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+      </button>
     </div>
 
     <!-- 表示補助 -->
@@ -215,6 +220,14 @@
         <button class="ed-btn ed-btn-wide" id="btn-add-floor">＋ フロアを追加</button>
       </section>
 
+      <!-- PPTの「オブジェクトの選択と表示」に相当する重なり順パネル。
+           最前面が一番上。右の ≡ ハンドルをドラッグして並べ替える -->
+      <section class="ed-card">
+        <h2 class="ed-card-title">Objects</h2>
+        <p class="ed-prop-hint" id="layer-hint">最前面が一番上。クリックで選択、右の ≡ をドラッグで前面/背面を入れ替え。</p>
+        <ul class="ed-layer-list" id="layer-list"></ul>
+      </section>
+
       <section class="ed-card">
         <h2 class="ed-card-title">Properties</h2>
         <div id="props"></div>
@@ -321,7 +334,9 @@
             <tr><td>複製 / 削除</td><td><kbd>Ctrl</kbd>+<kbd>D</kbd>で複製、<kbd>Delete</kbd>で削除。左のボタンでも可。</td></tr>
             <tr><td>左右 / 上下反転</td><td>図形を選択→左の「左右反転 / 上下反転」。複数選択なら範囲全体の中心で反転。</td></tr>
             <tr><td>個別に回転</td><td>図形やアイコンを選択→右パネルの「回転 X / Y / Z」。その図形だけ角度を変えられる。</td></tr>
-            <tr><td>色・透明度・枠線</td><td>図形を選択→右パネルで個別設定。スウォッチでテーマ色を即適用。</td></tr>
+            <tr><td>高さ位置</td><td>図形やアイコンを選択→右パネルの「高さ位置」スライダー。立方体の上に物を載せるなど、床から浮かせられる（3D視点で反映）。</td></tr>
+            <tr><td>前面 / 背面</td><td>右パネルの「Objects」一覧（最前面が一番上）。右の ≡ をドラッグして重なり順を入れ替え。</td></tr>
+            <tr><td>色・透明度・枠線</td><td>図形を選択→右パネルで個別設定。スウォッチでテーマ色を即適用。市松模様のスウォッチで塗りを「透明」にできる（枠線だけ残る）。</td></tr>
           </tbody></table>
         </section>
         <section>

@@ -734,25 +734,38 @@ function drawGrid(w, h) {
   ctx.globalAlpha = 1;
 }
 
+/* 図形の描画基準高さ＝フロアの床面＋図形ごとの高さ位置オフセット */
+const shapeElev = (s, floorE) => floorE + (s.zoff || 0);
+
 /* 1フロア分の描画 */
 function drawFloor(floor, elev, alpha) {
   ctx.globalAlpha = alpha;
 
-  /* ポリゴンは奥行きでソートして奥から描く（擬似3Dの整合性） */
-  const polys = floor.shapes.filter((s) => s.type === "poly")
-    .map((s) => {
-      const c = ringsCentroid(s.rings);
-      return { s, d: project(c.x, c.y, elev).d };
+  /* 立体になる図形（ポリゴン・アイコン）は全部まとめて奥行きソート。
+     以前はアイコンを常にポリゴンの上へ描いていたため、不透明な箱の
+     「奥」にあるアイコンまで手前に見えてしまっていた。
+     奥行きは中心点の中間高さで測り、同値なら配列順（＝レイヤー順）。
+     平面図では奥行き差が出ないので、レイヤー順そのままで描かれる */
+  floor.shapes
+    .filter((s) => s.type === "poly" || s.type === "icon")
+    .map((s, i) => {
+      const ze = shapeElev(s, elev);
+      const c = s.type === "poly" ? ringsCentroid(s.rings) : { x: s.x, y: s.y };
+      const zc = s.type === "poly"
+        ? ze + (s.height || 0) / 2
+        : ze + ((ICON_3D_H[s.kind] || 1) * (s.w || 0)) / 2;
+      return { s, i, d: project(c.x, c.y, zc).d };
     })
-    .sort((a, b) => a.d - b.d);
+    .sort((a, b) => (a.d - b.d) || (a.i - b.i))
+    .forEach(({ s }) => {
+      const ze = shapeElev(s, elev);
+      s.type === "poly" ? drawPoly(s, ze) : drawIcon(s, ze);
+    });
 
-  polys.forEach(({ s }) => drawPoly(s, elev));
-
-  /* アイコン・テキスト・ラベルカードはポリゴンの上に重ねる */
+  /* テキスト・ラベルカードは注釈なので常に最前面 */
   floor.shapes.forEach((s) => {
-    if (s.type === "icon") drawIcon(s, elev);
-    else if (s.type === "text") drawText(s, elev);
-    else if (s.type === "card") drawCard(s, elev);
+    if (s.type === "text") drawText(s, shapeElev(s, elev));
+    else if (s.type === "card") drawCard(s, shapeElev(s, elev));
   });
 
   ctx.globalAlpha = 1;
@@ -770,10 +783,11 @@ function drawPoly(s, elev) {
 
   const extruded = (zVisible() || tf) && s.height > 0;
   const topZ = extruded ? elev + s.height : elev;
+  const hasFill = s.fill && s.fill !== "transparent"; // 「透明」＝枠線だけ描く
   ctx.globalAlpha *= s.opacity;
   const baseAlpha = ctx.globalAlpha;
 
-  if (extruded) {
+  if (extruded && hasFill) {
     /* 側面：全エッジを四角形として集め、奥行き順に描く */
     const faces = [];
     s.rings.forEach((ring) => {
@@ -801,6 +815,24 @@ function drawPoly(s, elev) {
     });
   }
 
+  /* 透明塗り＋押し出し時は、側面の縦エッジと底面の輪郭線で立体を表す */
+  if (extruded && !hasFill && s.strokeWidth > 0) {
+    ctx.strokeStyle = s.stroke;
+    ctx.lineWidth = Math.max(1, s.strokeWidth * 0.7);
+    ctx.beginPath();
+    s.rings.forEach((ring) => {
+      ring.forEach(([x, y], i) => {
+        const p = P(x, y, elev);
+        i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y);
+        const t = P(x, y, topZ);
+        ctx.moveTo(p.x, p.y); ctx.lineTo(t.x, t.y); ctx.moveTo(p.x, p.y);
+      });
+      const p0 = P(ring[0][0], ring[0][1], elev);
+      ctx.lineTo(p0.x, p0.y);
+    });
+    ctx.stroke();
+  }
+
   /* 上面（平面図では唯一の面） */
   ctx.beginPath();
   s.rings.forEach((ring) => {
@@ -810,8 +842,10 @@ function drawPoly(s, elev) {
     });
     ctx.closePath();
   });
-  ctx.fillStyle = s.fill;
-  ctx.fill("evenodd");
+  if (hasFill) {
+    ctx.fillStyle = s.fill;
+    ctx.fill("evenodd");
+  }
   if (s.strokeWidth > 0) {
     ctx.strokeStyle = s.stroke;
     ctx.lineWidth = s.strokeWidth;
@@ -884,8 +918,10 @@ function drawCard(s, elev) {
   ctx.arcTo(x, y + h, x, y, r);
   ctx.arcTo(x, y, x + w, y, r);
   ctx.closePath();
-  ctx.fillStyle = s.fill;
-  ctx.fill();
+  if (s.fill && s.fill !== "transparent") {
+    ctx.fillStyle = s.fill;
+    ctx.fill();
+  }
   ctx.strokeStyle = s.color;
   ctx.lineWidth = 1.2;
   ctx.stroke();
@@ -931,7 +967,7 @@ function drawFreePreview() {
 /* 図形の画面上バウンディングボックスを求める */
 function shapeScreenBBox(entry) {
   const { shape: s, floor } = entry;
-  const elev = floorElev(doc.floors.indexOf(floor));
+  const elev = shapeElev(s, floorElev(doc.floors.indexOf(floor)));
   let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
   const add = (p) => {
     minX = Math.min(minX, p.x); maxX = Math.max(maxX, p.x);
@@ -995,7 +1031,7 @@ function drawSelectionOverlay() {
   if (ui.vertexEditId) {
     const entry = findShape(ui.vertexEditId);
     if (entry && entry.shape.type === "poly") {
-      const elev = floorElev(doc.floors.indexOf(entry.floor));
+      const elev = shapeElev(entry.shape, floorElev(doc.floors.indexOf(entry.floor)));
       entry.shape.rings.forEach((ring) => ring.forEach(([x, y]) => {
         const p = project(x, y, elev);
         ctx.fillStyle = cssVar("--color-surface");
@@ -1017,7 +1053,7 @@ function hitVertex(sx, sy) {
   if (!ui.vertexEditId) return null;
   const entry = findShape(ui.vertexEditId);
   if (!entry || entry.shape.type !== "poly") return null;
-  const elev = floorElev(doc.floors.indexOf(entry.floor));
+  const elev = shapeElev(entry.shape, floorElev(doc.floors.indexOf(entry.floor)));
   for (let ri = 0; ri < entry.shape.rings.length; ri++) {
     const ring = entry.shape.rings[ri];
     for (let pi = 0; pi < ring.length; pi++) {
@@ -1048,9 +1084,10 @@ function hitShape(sx, sy) {
 
   for (const floor of order) {
     if (!floor.visible) continue;
-    const elev = floorElev(doc.floors.indexOf(floor));
+    const floorE = floorElev(doc.floors.indexOf(floor));
     for (let i = floor.shapes.length - 1; i >= 0; i--) {
       const s = floor.shapes[i];
+      const elev = shapeElev(s, floorE);
       if (s.type === "poly") {
         const tf = shapeTransform(s, elev);
         const P = (x, y, z) => {
@@ -1406,7 +1443,7 @@ canvas.addEventListener("dblclick", (e) => {
     renderProps();
     requestRender();
   } else if (hit.shape.type === "text" || hit.shape.type === "card") {
-    const elev = floorElev(doc.floors.indexOf(hit.floor));
+    const elev = shapeElev(hit.shape, floorElev(doc.floors.indexOf(hit.floor)));
     const p = project(hit.shape.x, hit.shape.y, elev);
     openTextInput(hit.shape.x, hit.shape.y, hit.shape, p);
   }
@@ -1865,6 +1902,9 @@ document.getElementById("btn-zoom-in").addEventListener("click", () => setZoom(v
 document.getElementById("btn-zoom-out").addEventListener("click", () => setZoom(view.zoom / 1.2));
 document.getElementById("btn-fit").addEventListener("click", fitView);
 
+/* ---- フロア追加 ---- */
+document.getElementById("btn-add-floor").addEventListener("click", addFloor);
+
 /* ---- テーマ切替 ---- */
 document.querySelectorAll(".theme-dot").forEach((dot) => {
   dot.addEventListener("click", () => {
@@ -1947,6 +1987,100 @@ function renderFloorsPanel() {
     });
     list.appendChild(row);
   });
+  renderLayersPanel();
+}
+
+/* ---- オブジェクト一覧（重なり順）パネル ----
+   PPTの「オブジェクトの選択と表示」に相当。アクティブフロアの図形を
+   最前面から順に並べ、クリックで選択、≡ハンドルのドラッグで
+   配列内の順序（＝平面図の描画順・奥行き同値時の優先順）を入れ替える */
+
+function shapeLabel(s) {
+  const trim = (t) => (t && t.length > 8 ? t.slice(0, 8) + "…" : t || "");
+  if (s.type === "poly") return `図形（${s.rings[0]?.length || 0}頂点）`;
+  if (s.type === "icon") return ICONS[s.kind]?.label || "アイコン";
+  if (s.type === "text") return `文字「${trim(s.text)}」`;
+  if (s.type === "card") return `ラベル「${trim(s.text)}」`;
+  return "オブジェクト";
+}
+
+function renderLayersPanel() {
+  const list = document.getElementById("layer-list");
+  if (!list) return;
+  list.innerHTML = "";
+  const floor = activeFloor();
+  if (!floor) return;
+
+  /* 配列の末尾＝最前面なので、逆順でリスト上部に出す */
+  [...floor.shapes].reverse().forEach((s) => {
+    const row = document.createElement("li");
+    row.className = "ed-layer-row" + (ui.selection.includes(s.id) ? " is-active" : "");
+    row.dataset.id = s.id;
+
+    const name = document.createElement("span");
+    name.textContent = shapeLabel(s);
+
+    const handle = document.createElement("button");
+    handle.className = "ed-layer-handle";
+    handle.textContent = "≡";
+    handle.title = "ドラッグで前面/背面を入れ替え";
+    handle.addEventListener("click", (e) => e.stopPropagation());
+    bindLayerDrag(handle, row, list);
+
+    row.append(name, handle);
+    row.addEventListener("click", () => {
+      if (ui.multiSelect) {
+        const i = ui.selection.indexOf(s.id);
+        i >= 0 ? ui.selection.splice(i, 1) : ui.selection.push(s.id);
+      } else {
+        ui.selection = [s.id];
+        ui.vertexEditId = null;
+      }
+      renderProps();
+      requestRender();
+    });
+    list.appendChild(row);
+  });
+}
+
+/* ≡ハンドルのドラッグ並べ替え（Pointer Eventsでマウス・タッチ両対応） */
+function bindLayerDrag(handle, row, list) {
+  handle.addEventListener("pointerdown", (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    try { handle.setPointerCapture(e.pointerId); } catch (_) {}
+    let dragged = false;
+
+    const onMove = (ev) => {
+      dragged = true;
+      row.classList.add("is-dragging");
+      /* ポインタ位置より中点が下にある最初の行の前へ差し込む */
+      let before = null;
+      for (const r of list.children) {
+        if (r === row) continue;
+        const rect = r.getBoundingClientRect();
+        if (ev.clientY < rect.top + rect.height / 2) { before = r; break; }
+      }
+      before ? list.insertBefore(row, before) : list.appendChild(row);
+    };
+
+    const onUp = () => {
+      handle.removeEventListener("pointermove", onMove);
+      handle.removeEventListener("pointerup", onUp);
+      handle.removeEventListener("pointercancel", onUp);
+      row.classList.remove("is-dragging");
+      if (!dragged) return;
+      /* DOMの並び（上＝前面）を配列の並び（末尾＝前面）へ反映する */
+      pushUndo();
+      const order = [...list.children].map((r) => r.dataset.id).reverse();
+      activeFloor().shapes.sort((a, b) => order.indexOf(a.id) - order.indexOf(b.id));
+      requestRender();
+    };
+
+    handle.addEventListener("pointermove", onMove);
+    handle.addEventListener("pointerup", onUp);
+    handle.addEventListener("pointercancel", onUp);
+  });
 }
 
 /* ---- プロパティパネル ---- */
@@ -1978,6 +2112,15 @@ function makeInput(type, value, attrs = {}) {
   return el;
 }
 
+/* 高さ位置スライダー：図形を床から浮かせる（立方体の上に扉を載せる等）。
+   3D視点で反映される。平面図では見た目が変わらない */
+function addZoffRow(box, s) {
+  const inp = makeInput("range", s.zoff || 0, { min: 0, max: 400, step: 5 });
+  inp.title = "床からの高さ。3D視点で図形が浮き、他の図形の上に載せられます";
+  bindLive(inp, (v) => { s.zoff = Number(v) || 0; });
+  box.appendChild(propRow("高さ位置", inp));
+}
+
 /* 図形個別のX/Y/Z回転入力（ポリゴン・アイコン共通） */
 function addRotationRows(box, s) {
   ["x", "y", "z"].forEach((axis) => {
@@ -1991,6 +2134,7 @@ function addRotationRows(box, s) {
 }
 
 function renderProps() {
+  renderLayersPanel(); // 選択・図形の増減に合わせて重なり順パネルも更新
   const box = document.getElementById("props");
   box.innerHTML = "";
   const entries = selectedShapes();
@@ -2030,8 +2174,22 @@ function renderProps() {
       swatches.appendChild(sw);
     });
 
+  /* 「透明」スウォッチ：塗りを消して枠線（と文字）だけ残す */
+  if (s.type === "poly" || s.type === "card") {
+    const clear = document.createElement("button");
+    clear.className = "ed-swatch ed-swatch-clear";
+    clear.title = "透明（塗りなし）";
+    clear.addEventListener("click", () => {
+      pushUndo();
+      s.fill = "transparent";
+      renderProps();
+      requestRender();
+    });
+    swatches.appendChild(clear);
+  }
+
   if (s.type === "poly") {
-    const fill = makeInput("color", s.fill);
+    const fill = makeInput("color", s.fill === "transparent" ? "#ffffff" : s.fill);
     bindLive(fill, (v) => { s.fill = v; });
     box.appendChild(propRow("塗り", fill));
     box.appendChild(swatches);
@@ -2052,6 +2210,7 @@ function renderProps() {
     bindLive(height, (v) => { s.height = Number(v); });
     box.appendChild(propRow("厚み", height));
 
+    addZoffRow(box, s);
     addRotationRows(box, s);
 
     const editBtn = document.createElement("button");
@@ -2088,6 +2247,7 @@ function renderProps() {
       box.appendChild(propRow("向き", dir));
     }
 
+    addZoffRow(box, s);
     addRotationRows(box, s);
 
   } else if (s.type === "card") {
@@ -2099,7 +2259,7 @@ function renderProps() {
     bindLive(size, (v) => { s.size = Number(v); });
     box.appendChild(propRow("文字サイズ", size));
 
-    const fill = makeInput("color", s.fill);
+    const fill = makeInput("color", s.fill === "transparent" ? "#ffffff" : s.fill);
     bindLive(fill, (v) => { s.fill = v; });
     box.appendChild(propRow("背景", fill));
 
@@ -2115,6 +2275,8 @@ function renderProps() {
     const hIn = makeInput("number", s.h, { min: 24, max: 400, step: 4 });
     bindLive(hIn, (v) => { s.h = Number(v); });
     box.appendChild(propRow("高さ", hIn));
+
+    addZoffRow(box, s);
 
     const note = document.createElement("p");
     note.className = "ed-prop-hint";

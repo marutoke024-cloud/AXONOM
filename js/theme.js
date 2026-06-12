@@ -107,20 +107,28 @@
     renderProjectList();
   }
 
+  /* まっさらなドキュメント（新規・リセット用） */
+  const blankDoc = () => ({
+    app: "axonom", version: 1,
+    floors: [{ id: "f1", name: "1F", visible: true, shapes: [] }],
+    activeFloorId: "f1", idSeq: 1000,
+    view: { ax: 0, ay: 0, az: 0, ob: 0, zoom: 1, panX: E.canvas.clientWidth / 2, panY: E.canvas.clientHeight / 2 },
+    theme: document.documentElement.dataset.theme,
+  });
+
   function deleteProject(id) {
     let index = readIndex();
-    if (index.length <= 1) {
-      E.showHint("最後のプロジェクトは削除できません。");
-      return;
-    }
     index = index.filter((p) => p.id !== id);
     writeIndex(index);
     localStorage.removeItem(KEY_PROJECT(id));
     if (id === currentId) {
-      /* 開いていたものを消したら、いちばん新しい別プロジェクトへ */
-      const next = [...index].sort((a, b) => b.updated - a.updated)[0];
-      currentId = null;
-      openProject(next.id);
+      /* 作業中のプロジェクトを消したら、キャンバスを白紙に戻して
+         新しい空プロジェクトとして再スタートする */
+      currentId = createProject("Untitled " + (index.length + 1));
+      localStorage.setItem(KEY_CURRENT, currentId);
+      E.loadDoc(blankDoc());
+      saveCurrent();
+      E.showHint("プロジェクトを削除し、キャンバスをリセットしました。");
     } else {
       renderProjectList();
     }
@@ -236,13 +244,7 @@
     currentId = id;
     localStorage.setItem(KEY_CURRENT, id);
     /* まっさらなドキュメントで開始 */
-    E.loadDoc({
-      app: "axonom", version: 1,
-      floors: [{ id: "f1", name: "1F", visible: true, shapes: [] }],
-      activeFloorId: "f1", idSeq: 1000,
-      view: { ax: 0, ay: 0, az: 0, ob: 0, zoom: 1, panX: E.canvas.clientWidth / 2, panY: E.canvas.clientHeight / 2 },
-      theme: document.documentElement.dataset.theme,
-    });
+    E.loadDoc(blankDoc());
     saveCurrent();
     E.closeModal("modal-projects");
     E.showHint("新しいプロジェクトを作成しました。");

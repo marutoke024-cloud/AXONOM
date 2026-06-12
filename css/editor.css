@@ -99,6 +99,20 @@ body {
   margin-top: 8px;
 }
 
+/* SVGアイコンだけのボタン（Undo/Redoなど。絵文字化回避のため文字を使わない） */
+.ed-btn-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 5px 10px;
+}
+
+.ed-btn-icon svg {
+  width: 15px;
+  height: 15px;
+  display: block;
+}
+
 .ed-zoom {
   font-family: var(--font-display);
   font-size: 0.72rem;
@@ -449,6 +463,64 @@ body {
 
 .ed-swatch:hover {
   transform: scale(1.12);
+}
+
+/* 「透明」スウォッチ：市松模様で塗りなしを表す */
+.ed-swatch-clear {
+  background:
+    repeating-conic-gradient(#cfcac0 0% 25%, #f4f1ea 0% 50%) 0 0 / 10px 10px;
+}
+
+/* オブジェクト（重なり順）一覧 */
+.ed-layer-list {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  max-height: 220px;
+  overflow-y: auto;
+}
+
+.ed-layer-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 4px 4px 10px;
+  border-radius: var(--radius-s);
+  border: 1px solid transparent;
+  font-size: 0.76rem;
+  color: var(--color-ink-soft);
+  cursor: pointer;
+}
+
+.ed-layer-row:hover {
+  background: var(--color-surface-2);
+}
+
+.ed-layer-row.is-active {
+  border-color: var(--color-accent);
+  background: color-mix(in srgb, var(--color-accent-soft) 35%, transparent);
+  color: var(--color-ink);
+}
+
+.ed-layer-row.is-dragging {
+  opacity: 0.65;
+  border-color: var(--color-accent);
+  background: var(--color-surface);
+}
+
+.ed-layer-handle {
+  padding: 2px 8px;
+  border-radius: 6px;
+  color: var(--color-ink-soft);
+  font-size: 0.9rem;
+  cursor: grab;
+  touch-action: none; /* タッチでのドラッグ並べ替えを可能にする */
+}
+
+.ed-layer-handle:hover {
+  background: var(--color-surface);
+  color: var(--color-ink);
 }
 
 /* アクセント色の強調ボタン（PNG出力など） */

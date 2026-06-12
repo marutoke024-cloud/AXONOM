@@ -6,7 +6,7 @@
    バージョンを上げると旧キャッシュは activate 時に破棄される。
    ============================================================ */
 
-const CACHE_NAME = "axonom-v7";
+const CACHE_NAME = "axonom-v8";
 
 /* インストール時に確保しておくアプリの骨格 */
 const APP_SHELL = [
