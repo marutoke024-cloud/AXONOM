@@ -185,6 +185,50 @@ function unproject(sx, sy, z = 0) {
 
 /* 高さ方向が画面に現れるか（平面図なら false） */
 const zVisible = () => Math.abs(M[2]) + Math.abs(M[5]) > 1e-6;
+
+/* ------------------------------------------------------------
+   図形ローカル回転（選択図形ごとのX/Y/Z角度調整）
+   shape.rot = {x, y, z}（度）。図形の中心を軸に回転させてから
+   ビュー全体の投影に渡す。回転が無ければ null を返し、
+   描画側は変換をスキップして従来どおり動く。
+   ------------------------------------------------------------ */
+function shapeTransform(s, elev) {
+  const r = s.rot;
+  if (!r || (!r.x && !r.y && !r.z)) return null;
+
+  /* 回転中心＝図形の中央（高さ方向も中央） */
+  let cx, cy, cz;
+  if (s.type === "poly") {
+    const c = ringsCentroid(s.rings);
+    cx = c.x; cy = c.y;
+    cz = elev + (zVisible() ? (s.height || 0) / 2 : 0);
+  } else {
+    cx = s.x; cy = s.y;
+    cz = elev + ((ICON_3D_H[s.kind] || 1) * s.w) / 2;
+  }
+
+  const rad = (d) => (d * Math.PI) / 180;
+  const cxr = Math.cos(rad(r.x)), sxr = Math.sin(rad(r.x));
+  const cyr = Math.cos(rad(r.y)), syr = Math.sin(rad(r.y));
+  const czr = Math.cos(rad(r.z)), szr = Math.sin(rad(r.z));
+  /* ビューと同じ規約：S = Ry · Rx · Rz */
+  const Rz = [czr, -szr, 0, szr, czr, 0, 0, 0, 1];
+  const Rx = [1, 0, 0, 0, cxr, -sxr, 0, sxr, cxr];
+  const Ry = [cyr, 0, syr, 0, 1, 0, -syr, 0, cyr];
+  const S = mul3(Ry, mul3(Rx, Rz));
+
+  return (x, y, z) => {
+    const dx = x - cx, dy = y - cy, dz = z - cz;
+    return {
+      x: cx + S[0] * dx + S[1] * dy + S[2] * dz,
+      y: cy + S[3] * dx + S[4] * dy + S[5] * dz,
+      z: cz + S[6] * dx + S[7] * dy + S[8] * dz,
+    };
+  };
+}
+
+/* 図形に回転が掛かっているか（頂点編集・Boolean演算の可否判定に使う） */
+const isRotated = (s) => !!(s.rot && (s.rot.x || s.rot.y || s.rot.z));
 const isPlanView = () =>
   view.ax === 0 && view.ay === 0 && view.ob === 0;
 
@@ -258,6 +302,16 @@ const ICONS = {
     '<rect x="5" y="24" width="7" height="18" rx="1.5"/>' +
     '<path d="M12 27l31-8.5"/>' +
     '<path d="M19 25.2l1.3 4.8M27 23l1.3 4.8M35 20.8l1.3 4.8" opacity="0.7"/></svg>' },
+  door1: { label: "片開き扉", svg: SVG_HEAD +
+    /* 建築記号：壁線＋扉本体＋開閉軌跡の1/4円弧 */
+    '<path d="M3 32h11M34 32h11"/>' +
+    '<path d="M34 32V12"/>' +
+    '<path d="M14 32c0-11 9-20 20-20"/></svg>' },
+  door2: { label: "両開き扉", svg: SVG_HEAD +
+    /* 建築記号：両側から開く2枚の扉と弧 */
+    '<path d="M2 32h6M40 32h6"/>' +
+    '<path d="M8 32V16M40 32V16"/>' +
+    '<path d="M8 16c0 9 7 16 16 16M40 16c0 9-7 16-16 16"/></svg>' },
 };
 
 /* SVG → Image のキャッシュ（kind|色 をキーに） */
@@ -304,18 +358,24 @@ function ngonRing3D(cx, cy, r, n = 8) {
   return pts;
 }
 
-/* 角柱を1本描く（drawPolyの押し出しと同じ painter 方式） */
-function drawPrism(ring, z0, h, color, alpha = 1) {
+/* 角柱を1本描く（drawPolyの押し出しと同じ painter 方式）。
+   tf を渡すと図形ローカル回転を適用してから投影する */
+function drawPrism(ring, z0, h, color, alpha = 1, tf = null) {
+  const P = (x, y, z) => {
+    if (!tf) return project(x, y, z);
+    const t = tf(x, y, z);
+    return project(t.x, t.y, t.z);
+  };
   const prevAlpha = ctx.globalAlpha;
   ctx.globalAlpha *= alpha;
   if (h > 0) {
     const faces = [];
     for (let i = 0; i < ring.length; i++) {
       const p1 = ring[i], p2 = ring[(i + 1) % ring.length];
-      const a = project(p1[0], p1[1], z0);
-      const b = project(p2[0], p2[1], z0);
-      const c = project(p2[0], p2[1], z0 + h);
-      const d = project(p1[0], p1[1], z0 + h);
+      const a = P(p1[0], p1[1], z0);
+      const b = P(p2[0], p2[1], z0);
+      const c = P(p2[0], p2[1], z0 + h);
+      const d = P(p1[0], p1[1], z0 + h);
       const lit = b.x - a.x > 0 ? 0.82 : 0.6; // 簡易ライティング
       faces.push({ pts: [a, b, c, d], d: (a.d + b.d) / 2, lit });
     }
@@ -331,7 +391,7 @@ function drawPrism(ring, z0, h, color, alpha = 1) {
   /* 上面 */
   ctx.beginPath();
   ring.forEach(([x, y], i) => {
-    const p = project(x, y, z0 + h);
+    const p = P(x, y, z0 + h);
     i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y);
   });
   ctx.closePath();
@@ -432,6 +492,32 @@ const ICON_MODELS = {
     { ring: ngonRing3D(s.x, s.y, s.w * 0.27), z0: s.w * 1.04, h: s.w * 0.34, color: "#74a35e" },
   ],
 
+  /* 片開き扉：枠（縦枠2本＋上枠）＋扉パネル＋ハンドル（参考画像準拠） */
+  door1: (s, T) => {
+    const u = s.w, frame = "#6e5a40", panel = "#8a7350";
+    return [
+      B(s, -u * 0.46, 0, u * 0.08, s.h * 0.12, 0, u * 1.05, frame),
+      B(s, u * 0.46, 0, u * 0.08, s.h * 0.12, 0, u * 1.05, frame),
+      B(s, 0, 0, u * 1.0, s.h * 0.1, u * 1.0, u * 0.08, frame),
+      B(s, 0, 0, u * 0.82, s.h * 0.06, 0, u * 1.0, panel),
+      B(s, -u * 0.28, -s.h * 0.05, u * 0.14, s.h * 0.04, u * 0.5, u * 0.04, "#c8ccd0"),
+    ];
+  },
+
+  /* 両開き扉：広い枠＋中央で分かれる2枚のパネル（参考画像準拠） */
+  door2: (s, T) => {
+    const u = s.w, frame = "#5d4a36", panel = "#7a5f43";
+    return [
+      B(s, -u * 0.56, 0, u * 0.08, s.h * 0.12, 0, u * 1.1, frame),
+      B(s, u * 0.56, 0, u * 0.08, s.h * 0.12, 0, u * 1.1, frame),
+      B(s, 0, 0, u * 1.2, s.h * 0.1, u * 1.05, u * 0.08, frame),
+      B(s, -u * 0.26, 0, u * 0.48, s.h * 0.06, 0, u * 1.05, panel),
+      B(s, u * 0.26, 0, u * 0.48, s.h * 0.06, 0, u * 1.05, panel),
+      B(s, -u * 0.07, -s.h * 0.05, u * 0.1, s.h * 0.04, u * 0.5, u * 0.04, "#c8ccd0"),
+      B(s, u * 0.07, -s.h * 0.05, u * 0.1, s.h * 0.04, u * 0.5, u * 0.04, "#c8ccd0"),
+    ];
+  },
+
   /* 車両門：木調フレーム＋縦格子バー（参考画像準拠） */
   carGate: (s, T) => {
     const u = s.w, wood = "#7d5c3e", bar = "#3a3a3a";
@@ -457,22 +543,25 @@ function B(s, dx, dy, w, d, z0, h, color) {
 const ICON_3D_H = {
   rack: 1.6, mdf: 1.3, idf: 1.0, ahu: 0.8, crac: 1.5, ups: 1.25,
   generator: 1.0, reception: 0.75, biometric: 0.7, gate: 1.15,
-  camera: 0.75, tree: 1.45, carGate: 0.65,
+  camera: 0.75, tree: 1.45, carGate: 0.65, door1: 1.1, door2: 1.15,
 };
 
 /* 3Dモデルの描画：パーツを奥行きソートして奥から手前へ */
 function drawIcon3D(s, elev) {
   const T = s.tint || cssVar("--color-ink");
+  const tf = shapeTransform(s, elev); // アイコン個別の回転
   const parts = ICON_MODELS[s.kind](s, T);
   parts
     .map((p) => {
       let cx = 0, cy = 0;
       p.ring.forEach(([x, y]) => { cx += x; cy += y; });
       cx /= p.ring.length; cy /= p.ring.length;
-      return { p, depth: project(cx, cy, elev + p.z0 + p.h / 2).d };
+      let dz = elev + p.z0 + p.h / 2;
+      if (tf) { const t = tf(cx, cy, dz); cx = t.x; cy = t.y; dz = t.z; }
+      return { p, depth: project(cx, cy, dz).d };
     })
     .sort((a, b) => a.depth - b.depth)
-    .forEach(({ p }) => drawPrism(p.ring, elev + p.z0, p.h, p.color, p.alpha ?? 1));
+    .forEach(({ p }) => drawPrism(p.ring, elev + p.z0, p.h, p.color, p.alpha ?? 1, tf));
 }
 
 /* ============================================================
@@ -659,18 +748,27 @@ function drawFloor(floor, elev, alpha) {
 
   polys.forEach(({ s }) => drawPoly(s, elev));
 
-  /* アイコンとテキストはポリゴンの上に重ねる */
+  /* アイコン・テキスト・ラベルカードはポリゴンの上に重ねる */
   floor.shapes.forEach((s) => {
     if (s.type === "icon") drawIcon(s, elev);
     else if (s.type === "text") drawText(s, elev);
+    else if (s.type === "card") drawCard(s, elev);
   });
 
   ctx.globalAlpha = 1;
 }
 
-/* ポリゴン（押し出し対応） */
+/* ポリゴン（押し出し・図形ローカル回転対応） */
 function drawPoly(s, elev) {
-  const extruded = zVisible() && s.height > 0;
+  /* 図形に回転が設定されていればローカル変換を挟んで投影する */
+  const tf = shapeTransform(s, elev);
+  const P = (x, y, z) => {
+    if (!tf) return project(x, y, z);
+    const t = tf(x, y, z);
+    return project(t.x, t.y, t.z);
+  };
+
+  const extruded = (zVisible() || tf) && s.height > 0;
   const topZ = extruded ? elev + s.height : elev;
   ctx.globalAlpha *= s.opacity;
   const baseAlpha = ctx.globalAlpha;
@@ -681,10 +779,10 @@ function drawPoly(s, elev) {
     s.rings.forEach((ring) => {
       for (let i = 0; i < ring.length; i++) {
         const p1 = ring[i], p2 = ring[(i + 1) % ring.length];
-        const a = project(p1[0], p1[1], elev);
-        const b = project(p2[0], p2[1], elev);
-        const c = project(p2[0], p2[1], topZ);
-        const d = project(p1[0], p1[1], topZ);
+        const a = P(p1[0], p1[1], elev);
+        const b = P(p2[0], p2[1], elev);
+        const c = P(p2[0], p2[1], topZ);
+        const d = P(p1[0], p1[1], topZ);
         /* 画面上の辺の向きで陰影を2段階に振り分ける（簡易ライティング） */
         const lit = b.x - a.x > 0 ? 0.82 : 0.62;
         faces.push({ pts: [a, b, c, d], d: (a.d + b.d) / 2, lit });
@@ -707,7 +805,7 @@ function drawPoly(s, elev) {
   ctx.beginPath();
   s.rings.forEach((ring) => {
     ring.forEach(([x, y], i) => {
-      const p = project(x, y, topZ);
+      const p = P(x, y, topZ);
       i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y);
     });
     ctx.closePath();
@@ -749,8 +847,8 @@ function drawIcon(s, elev) {
     ctx.globalAlpha /= 0.22;
   }
 
-  /* 高さが見える視点では3Dモデルで描く */
-  if (zVisible() && ICON_MODELS[s.kind]) {
+  /* 高さが見える視点、または個別回転が掛かっている場合は3Dモデルで描く */
+  if ((zVisible() || isRotated(s)) && ICON_MODELS[s.kind]) {
     drawIcon3D(s, elev);
     return;
   }
@@ -769,6 +867,34 @@ function drawText(s, elev) {
   ctx.textBaseline = "middle";
   ctx.textAlign = "center";
   ctx.fillText(s.text, p.x, p.y);
+}
+
+/* ラベルカード：アンカー位置だけ投影し、矩形自体は常に画面に正対させる。
+   View Angleをどう変えても平面図と同じ見え方で固定される注釈用パネル */
+function drawCard(s, elev) {
+  const p = project(s.x, s.y, elev);
+  const w = s.w * view.zoom, h = s.h * view.zoom;
+  const x = p.x - w / 2, y = p.y - h / 2;
+  const r = Math.min(8 * view.zoom, w / 4, h / 4); // 角丸
+
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + w, y, x + w, y + h, r);
+  ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r);
+  ctx.arcTo(x, y, x + w, y, r);
+  ctx.closePath();
+  ctx.fillStyle = s.fill;
+  ctx.fill();
+  ctx.strokeStyle = s.color;
+  ctx.lineWidth = 1.2;
+  ctx.stroke();
+
+  ctx.font = `500 ${s.size * view.zoom}px "Noto Sans JP", "Space Grotesk", sans-serif`;
+  ctx.fillStyle = s.color;
+  ctx.textBaseline = "middle";
+  ctx.textAlign = "center";
+  ctx.fillText(s.text, p.x, p.y, w - 12 * view.zoom);
 }
 
 /* 自由多角形の作成プレビュー */
@@ -811,23 +937,29 @@ function shapeScreenBBox(entry) {
     minX = Math.min(minX, p.x); maxX = Math.max(maxX, p.x);
     minY = Math.min(minY, p.y); maxY = Math.max(maxY, p.y);
   };
+  const tf = shapeTransform(s, elev);
+  const P = (x, y, z) => {
+    if (!tf) return project(x, y, z);
+    const t = tf(x, y, z);
+    return project(t.x, t.y, t.z);
+  };
   if (s.type === "poly") {
-    const topZ = zVisible() && s.height > 0 ? elev + s.height : elev;
+    const topZ = (zVisible() || tf) && s.height > 0 ? elev + s.height : elev;
     s.rings.forEach((r) => r.forEach(([x, y]) => {
-      add(project(x, y, elev));
-      if (topZ !== elev) add(project(x, y, topZ));
+      add(P(x, y, elev));
+      if (topZ !== elev) add(P(x, y, topZ));
     }));
-  } else if (s.type === "icon") {
+  } else if (s.type === "icon" || s.type === "card") {
     const p = project(s.x, s.y, elev);
     const w = (s.w * view.zoom) / 2, h = (s.h * view.zoom) / 2;
     add({ x: p.x - w, y: p.y - h }); add({ x: p.x + w, y: p.y + h });
     /* 3Dモデル表示時はモデルの高さぶんも枠・ヒット範囲に含める */
-    if (zVisible() && ICON_MODELS[s.kind]) {
+    if (s.type === "icon" && (zVisible() || tf) && ICON_MODELS[s.kind]) {
       const topH = (ICON_3D_H[s.kind] || 1) * s.w;
       [[-s.w / 2, -s.h / 2], [s.w / 2, -s.h / 2], [s.w / 2, s.h / 2], [-s.w / 2, s.h / 2]]
         .forEach(([dx, dy]) => {
-          add(project(s.x + dx, s.y + dy, elev));
-          add(project(s.x + dx, s.y + dy, elev + topH));
+          add(P(s.x + dx, s.y + dy, elev));
+          add(P(s.x + dx, s.y + dy, elev + topH));
         });
     }
   } else {
@@ -920,14 +1052,20 @@ function hitShape(sx, sy) {
     for (let i = floor.shapes.length - 1; i >= 0; i--) {
       const s = floor.shapes[i];
       if (s.type === "poly") {
-        const topZ = zVisible() && s.height > 0 ? elev + s.height : elev;
+        const tf = shapeTransform(s, elev);
+        const P = (x, y, z) => {
+          if (!tf) return project(x, y, z);
+          const t = tf(x, y, z);
+          return project(t.x, t.y, t.z);
+        };
+        const topZ = (zVisible() || tf) && s.height > 0 ? elev + s.height : elev;
         const top = s.rings.map((r) => r.map(([x, y]) => {
-          const p = project(x, y, topZ); return [p.x, p.y];
+          const p = P(x, y, topZ); return [p.x, p.y];
         }));
         if (pointInScreenRings(top, sx, sy)) return { shape: s, floor };
         if (topZ !== elev) {
           const base = s.rings.map((r) => r.map(([x, y]) => {
-            const p = project(x, y, elev); return [p.x, p.y];
+            const p = P(x, y, elev); return [p.x, p.y];
           }));
           if (pointInScreenRings(base, sx, sy)) return { shape: s, floor };
         }
@@ -1045,6 +1183,25 @@ canvas.addEventListener("pointerdown", (e) => {
     return;
   }
 
+  if (ui.tool === "card") {
+    /* ラベルカードを配置してすぐテキスト編集へ */
+    pushUndo();
+    const card = {
+      id: uid(), type: "card",
+      x: snapV(wpt.x), y: snapV(wpt.y), w: 150, h: 56,
+      text: "ラベル", size: 14,
+      fill: cssVar("--color-surface"),
+      color: cssVar("--color-ink"),
+    };
+    activeFloor().shapes.push(card);
+    ui.selection = [card.id];
+    setTool("select");
+    renderProps();
+    requestRender();
+    openTextInput(card.x, card.y, card, pos);
+    return;
+  }
+
   if (ui.tool === "icon" && ui.iconKind) {
     pushUndo();
     const s = {
@@ -1127,7 +1284,7 @@ canvas.addEventListener("pointermove", (e) => {
   if (d.type === "resize") {
     const s = d.entry.shape;
     const scale = Math.max(0.2, 1 + (pos.x - d.start.x) / 80);
-    if (s.type === "icon") {
+    if (s.type === "icon" || s.type === "card") {
       s.w = Math.max(16, Math.round(d.w0 * scale));
       s.h = Math.max(16, Math.round(d.h0 * scale));
     } else if (s.type === "text") {
@@ -1239,12 +1396,16 @@ canvas.addEventListener("dblclick", (e) => {
   const hit = hitShape(pos.x, pos.y);
   if (!hit) return;
   if (hit.shape.type === "poly") {
+    if (isRotated(hit.shape)) {
+      showHint("回転が掛かった図形は頂点編集できません。回転を0に戻してください。");
+      return;
+    }
     ui.vertexEditId = hit.shape.id;
     ui.selection = [hit.shape.id];
     showHint("頂点をドラッグして変形できます。空クリックで終了。");
     renderProps();
     requestRender();
-  } else if (hit.shape.type === "text") {
+  } else if (hit.shape.type === "text" || hit.shape.type === "card") {
     const elev = floorElev(doc.floors.indexOf(hit.floor));
     const p = project(hit.shape.x, hit.shape.y, elev);
     openTextInput(hit.shape.x, hit.shape.y, hit.shape, p);
@@ -1405,6 +1566,52 @@ function pasteClipboard() {
   requestRender();
 }
 
+/* 選択図形の反転。axis: "h"=左右反転（X軸方向）/ "v"=上下反転（Y軸方向）
+   複数選択時は選択範囲全体の中心を軸に、配置ごと反転する */
+function flipSelection(axis) {
+  const entries = selectedShapes();
+  if (!entries.length) {
+    showHint("反転する図形を選択してください。");
+    return;
+  }
+  pushUndo();
+
+  /* ワールド座標での選択範囲の中心を求める */
+  let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+  entries.forEach(({ shape: s }) => {
+    if (s.type === "poly") {
+      s.rings.forEach((r) => r.forEach(([x, y]) => {
+        minX = Math.min(minX, x); maxX = Math.max(maxX, x);
+        minY = Math.min(minY, y); maxY = Math.max(maxY, y);
+      }));
+    } else {
+      const hw = (s.w || 0) / 2, hh = (s.h || 0) / 2;
+      minX = Math.min(minX, s.x - hw); maxX = Math.max(maxX, s.x + hw);
+      minY = Math.min(minY, s.y - hh); maxY = Math.max(maxY, s.y + hh);
+    }
+  });
+  const cx = (minX + maxX) / 2, cy = (minY + maxY) / 2;
+
+  entries.forEach(({ shape: s }) => {
+    if (s.type === "poly") {
+      /* 鏡映で頂点順が逆回りになるため reverse して向きを保つ */
+      s.rings = s.rings.map((r) =>
+        r.map(([x, y]) => [axis === "h" ? 2 * cx - x : x, axis === "v" ? 2 * cy - y : y])
+         .reverse());
+    } else {
+      if (axis === "h") s.x = 2 * cx - s.x;
+      else s.y = 2 * cy - s.y;
+      /* 監視カメラは視野の向きも一緒に反転する */
+      if (s.kind === "camera") {
+        const d0 = s.dir || 0;
+        s.dir = ((axis === "h" ? 180 - d0 : 360 - d0) % 360 + 360) % 360;
+      }
+    }
+  });
+  renderProps();
+  requestRender();
+}
+
 /* Boolean演算（選択順の1つ目が基準図形） */
 function applyBoolean(op) {
   if (!window.polygonClipping) {
@@ -1414,6 +1621,10 @@ function applyBoolean(op) {
   const entries = selectedShapes().filter((e) => e.shape.type === "poly");
   if (entries.length < 2) {
     showHint("ポリゴンを2つ以上選択してください（Shift＋クリックで追加）。");
+    return;
+  }
+  if (entries.some((e) => isRotated(e.shape))) {
+    showHint("回転が掛かった図形は結合できません。回転を0に戻してから実行してください。");
     return;
   }
   pushUndo();
@@ -1504,6 +1715,7 @@ const TOOL_HINTS = {
   free: "クリックで頂点を追加、ダブルクリックまたはEnterで確定。",
   text: "配置したい位置をクリックしてください。",
   icon: "配置したい位置をクリックしてください。",
+  card: "配置したい位置をクリックしてください。視点を変えても正面向きのまま固定されます。",
 };
 
 function setTool(tool, iconKind = null) {
@@ -1518,7 +1730,9 @@ function setTool(tool, iconKind = null) {
   document.querySelectorAll(".ed-tool[data-tool]").forEach((b) =>
     b.classList.toggle("is-active", b.dataset.tool === tool));
   document.querySelectorAll(".ed-icon-btn").forEach((b) =>
-    b.classList.toggle("is-active", tool === "icon" && b.dataset.icon === iconKind));
+    b.classList.toggle("is-active",
+      (tool === "icon" && b.dataset.icon === iconKind) ||
+      (tool === "card" && b.dataset.icon === "card")));
   canvas.classList.toggle("is-select", tool === "select");
   showHint(TOOL_HINTS[tool] || "", tool !== "select");
   requestRender();
@@ -1534,6 +1748,10 @@ document.getElementById("btn-copy").addEventListener("click", () => {
   copySelection(); pasteClipboard();
 });
 document.getElementById("btn-delete").addEventListener("click", deleteSelection);
+
+/* ---- 反転ボタン ---- */
+document.getElementById("btn-flip-h").addEventListener("click", () => flipSelection("h"));
+document.getElementById("btn-flip-v").addEventListener("click", () => flipSelection("v"));
 
 /* ---- 複数選択モード（タッチでのShift+クリック代替） ---- */
 document.getElementById("btn-multi").addEventListener("click", (e) => {
@@ -1555,15 +1773,16 @@ Object.entries(ICONS).forEach(([kind, def]) => {
   btn.addEventListener("click", () => setTool("icon", kind));
   iconGrid.appendChild(btn);
 });
-/* 汎用ラベル（テキストツールへのショートカット）もパレットに置く */
+/* ラベルカード（視点を変えても正面固定の注釈パネル）もパレットに置く */
 {
   const btn = document.createElement("button");
   btn.className = "ed-icon-btn";
-  btn.title = "汎用ラベル・テキスト";
+  btn.dataset.icon = "card";
+  btn.title = "ラベルカード：テキスト入力できる四角。View Angleを変えても平面表示のまま固定される";
   btn.innerHTML = SVG_HEAD.replaceAll("{{C}}", "currentColor") +
     '<rect x="6" y="14" width="36" height="20" rx="3"/><path d="M13 24h16"/></svg>' +
     "<span>ラベル</span>";
-  btn.addEventListener("click", () => setTool("text"));
+  btn.addEventListener("click", () => setTool("card"));
   iconGrid.appendChild(btn);
 }
 
@@ -1759,6 +1978,18 @@ function makeInput(type, value, attrs = {}) {
   return el;
 }
 
+/* 図形個別のX/Y/Z回転入力（ポリゴン・アイコン共通） */
+function addRotationRows(box, s) {
+  ["x", "y", "z"].forEach((axis) => {
+    const inp = makeInput("number", (s.rot && s.rot[axis]) || 0, { min: -180, max: 180, step: 5 });
+    bindLive(inp, (v) => {
+      if (!s.rot) s.rot = { x: 0, y: 0, z: 0 };
+      s.rot[axis] = Number(v) || 0;
+    });
+    box.appendChild(propRow("回転 " + axis.toUpperCase(), inp));
+  });
+}
+
 function renderProps() {
   const box = document.getElementById("props");
   box.innerHTML = "";
@@ -1821,10 +2052,16 @@ function renderProps() {
     bindLive(height, (v) => { s.height = Number(v); });
     box.appendChild(propRow("厚み", height));
 
+    addRotationRows(box, s);
+
     const editBtn = document.createElement("button");
     editBtn.className = "ed-btn ed-btn-wide";
     editBtn.textContent = ui.vertexEditId === s.id ? "頂点編集を終了" : "頂点を編集";
     editBtn.addEventListener("click", () => {
+      if (isRotated(s)) {
+        showHint("回転が掛かった図形は頂点編集できません。回転を0に戻してください。");
+        return;
+      }
       ui.vertexEditId = ui.vertexEditId === s.id ? null : s.id;
       renderProps();
       requestRender();
@@ -1850,6 +2087,39 @@ function renderProps() {
       bindLive(dir, (v) => { s.dir = Number(v); });
       box.appendChild(propRow("向き", dir));
     }
+
+    addRotationRows(box, s);
+
+  } else if (s.type === "card") {
+    const txt = makeInput("text", s.text);
+    bindLive(txt, (v) => { s.text = v; });
+    box.appendChild(propRow("内容", txt));
+
+    const size = makeInput("number", s.size, { min: 8, max: 60, step: 1 });
+    bindLive(size, (v) => { s.size = Number(v); });
+    box.appendChild(propRow("文字サイズ", size));
+
+    const fill = makeInput("color", s.fill);
+    bindLive(fill, (v) => { s.fill = v; });
+    box.appendChild(propRow("背景", fill));
+
+    const color = makeInput("color", s.color);
+    bindLive(color, (v) => { s.color = v; });
+    box.appendChild(propRow("文字・枠", color));
+    box.appendChild(swatches);
+
+    const wIn = makeInput("number", s.w, { min: 40, max: 600, step: 10 });
+    bindLive(wIn, (v) => { s.w = Number(v); });
+    box.appendChild(propRow("幅", wIn));
+
+    const hIn = makeInput("number", s.h, { min: 24, max: 400, step: 4 });
+    bindLive(hIn, (v) => { s.h = Number(v); });
+    box.appendChild(propRow("高さ", hIn));
+
+    const note = document.createElement("p");
+    note.className = "ed-prop-hint";
+    note.textContent = "このカードは視点を変えても常に正面向きで表示されます。";
+    box.appendChild(note);
 
   } else if (s.type === "text") {
     const txt = makeInput("text", s.text);
