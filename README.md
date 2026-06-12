@@ -10,7 +10,7 @@
 - **Plan / Pseudo-3D** — 真上の平面図と、X/Y/Z角度スライダーによる斜め見下ろしをリアルタイム切替。プリセット（真上 / Isometric / Cabinet）付き
 - **Block-style modeling** — 矩形・多角形・L字・自由多角形、頂点ドラッグ変形、厚みの押し出し、Boolean演算（接合 / 型抜き / 抽出 / 除外）
 - **Stacked floors** — 複数フロアをレイヤー管理し、立体的に積層表示
-- **DC icon library** — サーバーラック、PDU、MDF/IDF、空調（AHU / CRAC）、UPS、発電機、監視カメラ（視野扇形つき）などをインラインSVGで内蔵
+- **DC icon library** — サーバーラック、MDF/IDF、空調（AHU / CRAC）、UPS、発電機、セキュリティゲート、監視カメラ（視野扇形つき）などをインラインSVGで内蔵。**擬似3Dビューでは各アイコンが立体モデルに自動切替**
 - **PNG export** — 背景（透明 / 白 / テーマ色）と解像度（1x / 2x）を選択可。PowerPoint貼り付けに最適
 - **Projects** — LocalStorageへの自動保存、複数プロジェクト管理、JSON入出力
 - **5 theme palettes** — Greige / Sage / Mist / Sand / Lavender

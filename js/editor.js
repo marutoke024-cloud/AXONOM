@@ -207,10 +207,6 @@ const ICONS = {
   rack: { label: "サーバーラック", svg: SVG_HEAD +
     '<rect x="12" y="5" width="24" height="38" rx="2"/>' +
     '<path d="M12 13h24M12 21h24M12 29h24M12 37h24"/></svg>' },
-  pdu: { label: "PDU", svg: SVG_HEAD +
-    '<rect x="17" y="4" width="14" height="40" rx="2"/>' +
-    '<circle cx="24" cy="12" r="2.4"/><circle cx="24" cy="21" r="2.4"/>' +
-    '<circle cx="24" cy="30" r="2.4"/><path d="M21 38h6"/></svg>' },
   mdf: { label: "MDF", svg: SVG_HEAD +
     '<rect x="9" y="5" width="30" height="38" rx="2"/>' +
     '<path d="M14 12h20M14 18h20M14 24h20"/>' +
@@ -262,8 +258,6 @@ const ICONS = {
     '<rect x="5" y="24" width="7" height="18" rx="1.5"/>' +
     '<path d="M12 27l31-8.5"/>' +
     '<path d="M19 25.2l1.3 4.8M27 23l1.3 4.8M35 20.8l1.3 4.8" opacity="0.7"/></svg>' },
-  fence: { label: "外周柵", svg: SVG_HEAD +
-    '<path d="M8 9v30M24 9v30M40 9v30"/><path d="M4 17h40M4 31h40"/></svg>' },
 };
 
 /* SVG → Image のキャッシュ（kind|色 をキーに） */
@@ -278,6 +272,207 @@ function iconImage(kind, tint) {
   img.src = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(svg);
   iconImgCache.set(key, img);
   return img;
+}
+
+/* ============================================================
+   5b. DCアイコンの3Dモデル
+   擬似3Dビュー（角度付き・キャビネット図）では、平面記号の代わりに
+   「箱・角柱の組み合わせ」で作った立体モデルを描く。
+   各モデルは投影行列を通して描画されるため、X/Y/Z角度の変更にも
+   正しく追従する。平面図（真上）では従来のSVG記号のまま。
+
+   パーツ形式: { ring(底面のワールド座標), z0(床からの高さ),
+                h(パーツの高さ), color, alpha? }
+   寸法はアイコンの footprint（s.w × s.h）を基準にした相対値。
+   ============================================================ */
+
+/* 中心(cx,cy)・幅w・奥行dの矩形リング */
+function boxRing(cx, cy, w, d) {
+  return [
+    [cx - w / 2, cy - d / 2], [cx + w / 2, cy - d / 2],
+    [cx + w / 2, cy + d / 2], [cx - w / 2, cy + d / 2],
+  ];
+}
+
+/* 中心(cx,cy)・半径rのn角形リング（樹冠などの丸い形に使う） */
+function ngonRing3D(cx, cy, r, n = 8) {
+  const pts = [];
+  for (let i = 0; i < n; i++) {
+    const a = (i / n) * Math.PI * 2;
+    pts.push([cx + Math.cos(a) * r, cy + Math.sin(a) * r]);
+  }
+  return pts;
+}
+
+/* 角柱を1本描く（drawPolyの押し出しと同じ painter 方式） */
+function drawPrism(ring, z0, h, color, alpha = 1) {
+  const prevAlpha = ctx.globalAlpha;
+  ctx.globalAlpha *= alpha;
+  if (h > 0) {
+    const faces = [];
+    for (let i = 0; i < ring.length; i++) {
+      const p1 = ring[i], p2 = ring[(i + 1) % ring.length];
+      const a = project(p1[0], p1[1], z0);
+      const b = project(p2[0], p2[1], z0);
+      const c = project(p2[0], p2[1], z0 + h);
+      const d = project(p1[0], p1[1], z0 + h);
+      const lit = b.x - a.x > 0 ? 0.82 : 0.6; // 簡易ライティング
+      faces.push({ pts: [a, b, c, d], d: (a.d + b.d) / 2, lit });
+    }
+    faces.sort((f1, f2) => f1.d - f2.d);
+    faces.forEach((f) => {
+      ctx.beginPath();
+      f.pts.forEach((p, i) => (i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y)));
+      ctx.closePath();
+      ctx.fillStyle = shade(color, f.lit);
+      ctx.fill();
+    });
+  }
+  /* 上面 */
+  ctx.beginPath();
+  ring.forEach(([x, y], i) => {
+    const p = project(x, y, z0 + h);
+    i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y);
+  });
+  ctx.closePath();
+  ctx.fillStyle = color;
+  ctx.fill();
+  ctx.globalAlpha = prevAlpha;
+}
+
+/* モデル定義。s（アイコン図形）からパーツ配列を返す。
+   B(...) = 箱パーツの省略記法 */
+const ICON_MODELS = {
+
+  /* サーバーラック：縦長の筐体 */
+  rack: (s, T) => {
+    const u = s.w;
+    return [
+      B(s, 0, 0, u * 0.78, s.h * 0.78, 0, u * 1.5, T),
+      B(s, 0, 0, u * 0.6, s.h * 0.6, u * 1.5, u * 0.04, shade(T, 0.8)),
+    ];
+  },
+
+  /* MDF：幅広の配線盤キャビネット */
+  mdf: (s, T) => [
+    B(s, 0, 0, s.w * 0.95, s.h * 0.55, 0, s.w * 1.25, T),
+  ],
+
+  /* IDF：MDFより小ぶり */
+  idf: (s, T) => [
+    B(s, 0, 0, s.w * 0.72, s.h * 0.5, 0, s.w * 0.95, T),
+  ],
+
+  /* 壁吹き空調 (AHU)：横長の機体＋上部ユニット */
+  ahu: (s, T) => [
+    B(s, 0, 0, s.w * 0.95, s.h * 0.55, 0, s.w * 0.6, "#aab4b6"),
+    B(s, -s.w * 0.25, 0, s.w * 0.28, s.h * 0.32, s.w * 0.6, s.w * 0.14, shade("#aab4b6", 0.85)),
+  ],
+
+  /* 冷却 (CRAC/CRAH)：背の高い空調筐体＋天面キャップ */
+  crac: (s, T) => [
+    B(s, 0, 0, s.w * 0.6, s.h * 0.6, 0, s.w * 1.35, "#9fb6bd"),
+    B(s, 0, 0, s.w * 0.66, s.h * 0.66, s.w * 1.35, s.w * 0.1, "#8aa6ae"),
+  ],
+
+  /* UPS：明るいキャビネット＋黒い基台（参考画像準拠） */
+  ups: (s, T) => [
+    B(s, 0, 0, s.w * 0.85, s.h * 0.6, 0, s.w * 0.07, "#3a3733"),
+    B(s, 0, 0, s.w * 0.8, s.h * 0.55, s.w * 0.07, s.w * 1.1, "#e9e2d2"),
+    B(s, 0, s.h * 0.05, s.w * 0.5, s.h * 0.45, s.w * 1.17, s.w * 0.04, "#d9d0bc"),
+  ],
+
+  /* 非常用発電機：黒スキッド＋エンジン＋発電機＋排気管（参考画像準拠） */
+  generator: (s, T) => [
+    B(s, 0, 0, s.w * 1.05, s.h * 0.55, 0, s.w * 0.1, "#33312e"),
+    B(s, -s.w * 0.15, 0, s.w * 0.6, s.h * 0.45, s.w * 0.1, s.w * 0.5, "#ccd6d2"),
+    B(s, s.w * 0.36, 0, s.w * 0.26, s.h * 0.38, s.w * 0.1, s.w * 0.42, "#b9c6c1"),
+    B(s, -s.w * 0.18, -s.h * 0.05, s.w * 0.1, s.h * 0.1, s.w * 0.6, s.w * 0.32, "#8d9995"),
+  ],
+
+  /* 受付端末：カウンター＋モニター */
+  reception: (s, T) => [
+    B(s, 0, 0, s.w * 0.8, s.h * 0.42, 0, s.w * 0.45, "#cfc4ae"),
+    B(s, 0, -s.h * 0.06, s.w * 0.3, s.h * 0.05, s.w * 0.45, s.w * 0.26, T),
+  ],
+
+  /* 生体情報スキャナ：細い支柱＋読み取りパネル */
+  biometric: (s, T) => [
+    B(s, 0, 0, s.w * 0.16, s.h * 0.16, 0, s.w * 0.58, T),
+    B(s, 0, -s.h * 0.04, s.w * 0.26, s.h * 0.18, s.w * 0.58, s.w * 0.07, cssVar("--color-accent")),
+  ],
+
+  /* セキュリティゲート：金属ペデスタル2基＋ガラスフラップ（参考画像準拠） */
+  gate: (s, T) => {
+    const u = s.w, metal = "#b6bcc2", glass = "#cfe0ea";
+    return [
+      B(s, -u * 0.38, 0, u * 0.24, s.h * 0.85, 0, u * 0.5, metal),
+      B(s, u * 0.38, 0, u * 0.24, s.h * 0.85, 0, u * 0.5, metal),
+      /* ガラスパネル：ペデスタル上に立つ薄い板（半透明） */
+      { ring: boxRing(s.x - u * 0.38, s.y, u * 0.04, s.h * 0.7), z0: u * 0.5, h: u * 0.62, color: glass, alpha: 0.5 },
+      { ring: boxRing(s.x + u * 0.38, s.y, u * 0.04, s.h * 0.7), z0: u * 0.5, h: u * 0.62, color: glass, alpha: 0.5 },
+    ];
+  },
+
+  /* 監視カメラ：支柱＋向きに合わせたヘッド（視野扇形は床面に別描画） */
+  camera: (s, T) => {
+    const u = s.w;
+    const dir = ((s.dir || 0) * Math.PI) / 180;
+    return [
+      B(s, 0, 0, u * 0.07, u * 0.07, 0, u * 0.55, T),
+      { ring: boxRing(s.x + Math.cos(dir) * u * 0.12, s.y + Math.sin(dir) * u * 0.12, u * 0.22, u * 0.14),
+        z0: u * 0.55, h: u * 0.13, color: T },
+    ];
+  },
+
+  /* 植栽：幹＋八角形の樹冠2段（参考画像準拠） */
+  tree: (s, T) => [
+    B(s, 0, 0, s.w * 0.1, s.h * 0.1, 0, s.w * 0.5, "#7a5b3a"),
+    { ring: ngonRing3D(s.x, s.y, s.w * 0.42), z0: s.w * 0.42, h: s.w * 0.62, color: "#5f8a4f" },
+    { ring: ngonRing3D(s.x, s.y, s.w * 0.27), z0: s.w * 1.04, h: s.w * 0.34, color: "#74a35e" },
+  ],
+
+  /* 車両門：木調フレーム＋縦格子バー（参考画像準拠） */
+  carGate: (s, T) => {
+    const u = s.w, wood = "#7d5c3e", bar = "#3a3a3a";
+    const parts = [
+      B(s, -u * 0.48, 0, u * 0.07, s.h * 0.14, 0, u * 0.6, wood),
+      B(s, u * 0.48, 0, u * 0.07, s.h * 0.14, 0, u * 0.6, wood),
+      B(s, 0, 0, u * 1.02, s.h * 0.1, u * 0.54, u * 0.08, wood),
+    ];
+    /* 縦格子：等間隔の細いバー */
+    for (let i = -3; i <= 3; i++) {
+      parts.push(B(s, (i / 8) * u, 0, u * 0.025, s.h * 0.06, 0, u * 0.54, bar));
+    }
+    return parts;
+  },
+};
+
+/* 箱パーツの省略記法 */
+function B(s, dx, dy, w, d, z0, h, color) {
+  return { ring: boxRing(s.x + dx, s.y + dy, w, d), z0, h, color };
+}
+
+/* 選択枠・ヒット範囲の計算に使う各モデルの最大高さ（footprint幅に対する倍率） */
+const ICON_3D_H = {
+  rack: 1.6, mdf: 1.3, idf: 1.0, ahu: 0.8, crac: 1.5, ups: 1.25,
+  generator: 1.0, reception: 0.75, biometric: 0.7, gate: 1.15,
+  camera: 0.75, tree: 1.45, carGate: 0.65,
+};
+
+/* 3Dモデルの描画：パーツを奥行きソートして奥から手前へ */
+function drawIcon3D(s, elev) {
+  const T = s.tint || cssVar("--color-ink");
+  const parts = ICON_MODELS[s.kind](s, T);
+  parts
+    .map((p) => {
+      let cx = 0, cy = 0;
+      p.ring.forEach(([x, y]) => { cx += x; cy += y; });
+      cx /= p.ring.length; cy /= p.ring.length;
+      return { p, depth: project(cx, cy, elev + p.z0 + p.h / 2).d };
+    })
+    .sort((a, b) => a.depth - b.depth)
+    .forEach(({ p }) => drawPrism(p.ring, elev + p.z0, p.h, p.color, p.alpha ?? 1));
 }
 
 /* ============================================================
@@ -527,8 +722,11 @@ function drawPoly(s, elev) {
   ctx.globalAlpha = baseAlpha / (s.opacity || 1);
 }
 
-/* アイコン（ビルボード描画＝常に正面向き） */
+/* アイコン：平面図ではSVG記号、擬似3Dでは立体モデルを描く */
 function drawIcon(s, elev) {
+  /* 削除済みのアイコン種（旧プロジェクトのPDU・外周柵など）は安全に無視 */
+  if (!ICONS[s.kind]) return;
+
   const p = project(s.x, s.y, elev);
 
   /* 監視カメラ：向いている方向に放射状の視野扇形を描く */
@@ -549,6 +747,12 @@ function drawIcon(s, elev) {
     ctx.globalAlpha *= 0.22;
     ctx.fill();
     ctx.globalAlpha /= 0.22;
+  }
+
+  /* 高さが見える視点では3Dモデルで描く */
+  if (zVisible() && ICON_MODELS[s.kind]) {
+    drawIcon3D(s, elev);
+    return;
   }
 
   const img = iconImage(s.kind, s.tint || cssVar("--color-ink"));
@@ -617,6 +821,15 @@ function shapeScreenBBox(entry) {
     const p = project(s.x, s.y, elev);
     const w = (s.w * view.zoom) / 2, h = (s.h * view.zoom) / 2;
     add({ x: p.x - w, y: p.y - h }); add({ x: p.x + w, y: p.y + h });
+    /* 3Dモデル表示時はモデルの高さぶんも枠・ヒット範囲に含める */
+    if (zVisible() && ICON_MODELS[s.kind]) {
+      const topH = (ICON_3D_H[s.kind] || 1) * s.w;
+      [[-s.w / 2, -s.h / 2], [s.w / 2, -s.h / 2], [s.w / 2, s.h / 2], [-s.w / 2, s.h / 2]]
+        .forEach(([dx, dy]) => {
+          add(project(s.x + dx, s.y + dy, elev));
+          add(project(s.x + dx, s.y + dy, elev + topH));
+        });
+    }
   } else {
     const p = project(s.x, s.y, elev);
     ctx.font = `${s.weight} ${s.size * view.zoom}px "Noto Sans JP", sans-serif`;
