@@ -1,0 +1,413 @@
+<!DOCTYPE html>
+<html lang="ja" data-theme="greige">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no">
+  <title>AXONOM — Editor</title>
+  <meta name="description" content="フロアマップエディタ。平面図と擬似3Dを切り替えながら、積み木のように図面を組み立てる。">
+
+  <!-- PWA -->
+  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#EDEAE4">
+  <link rel="icon" type="image/svg+xml" href="assets/icons/icon.svg">
+
+  <!-- フォント -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet"
+        href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600&family=Noto+Sans+JP:wght@400;500;700&display=swap">
+
+  <link rel="stylesheet" href="css/global.css">
+  <link rel="stylesheet" href="css/editor.css">
+
+  <!-- 図形のBoolean演算ライブラリ（Martinezアルゴリズム / MIT License） -->
+  <script src="https://unpkg.com/polygon-clipping@0.15.7/dist/polygon-clipping.umd.js" defer></script>
+</head>
+<body>
+
+  <!-- ============================================================
+       上部バー：ビュー切替・プリセット・履歴・表示補助・テーマ
+       ============================================================ -->
+  <header class="ed-topbar">
+    <a class="ed-brand" href="index.html" aria-label="Back to home">
+      <svg viewBox="0 0 40 40" aria-hidden="true">
+        <polygon points="20,22 34,29 20,36 6,29" fill="var(--color-ink)"/>
+        <polygon points="20,13 34,20 20,27 6,20" fill="var(--color-surface-2)"/>
+        <polygon points="20,4 34,11 20,18 6,11" fill="var(--color-accent)"/>
+      </svg>
+      <span>AXONOM</span>
+    </a>
+
+    <!-- 表示モード切替 -->
+    <div class="ed-group" role="group" aria-label="View mode">
+      <button class="ed-btn" id="mode-plan" title="平面図モード（真上）">Plan</button>
+      <button class="ed-btn" id="mode-3d" title="擬似3Dモード（斜め）">3D</button>
+    </div>
+
+    <!-- 角度プリセット -->
+    <div class="ed-group" role="group" aria-label="Angle presets">
+      <button class="ed-btn" data-preset="plan" title="平面図（真上）">真上</button>
+      <button class="ed-btn" data-preset="iso" title="アイソメトリック">Isometric</button>
+      <button class="ed-btn" data-preset="cabinet" title="キャビネット図">Cabinet</button>
+    </div>
+
+    <!-- 履歴 -->
+    <div class="ed-group" role="group" aria-label="History">
+      <button class="ed-btn" id="btn-undo" title="元に戻す (Ctrl+Z)">↩</button>
+      <button class="ed-btn" id="btn-redo" title="やり直す (Ctrl+Y)">↪</button>
+    </div>
+
+    <!-- 表示補助 -->
+    <div class="ed-group" role="group" aria-label="View helpers">
+      <button class="ed-btn is-active" id="btn-grid" title="グリッド表示">Grid</button>
+      <button class="ed-btn is-active" id="btn-snap" title="スナップ">Snap</button>
+      <button class="ed-btn" id="btn-zoom-out" title="ズームアウト">−</button>
+      <span class="ed-zoom" id="zoom-label">100%</span>
+      <button class="ed-btn" id="btn-zoom-in" title="ズームイン">＋</button>
+      <button class="ed-btn" id="btn-fit" title="全体表示">Fit</button>
+    </div>
+
+    <!-- テーマパレット -->
+    <div class="ed-group ed-theme" role="group" aria-label="Theme palette">
+      <button class="theme-dot is-active" data-theme-name="greige"  style="--dot:#c96f4a" aria-label="Greige"></button>
+      <button class="theme-dot" data-theme-name="sage"     style="--dot:#5f8a68" aria-label="Sage"></button>
+      <button class="theme-dot" data-theme-name="mist"     style="--dot:#4a6fa5" aria-label="Mist"></button>
+      <button class="theme-dot" data-theme-name="sand"     style="--dot:#a8842e" aria-label="Sand"></button>
+      <button class="theme-dot" data-theme-name="lavender" style="--dot:#7b6cd9" aria-label="Lavender"></button>
+    </div>
+
+    <!-- 出力・プロジェクト・ヘルプ -->
+    <div class="ed-group" role="group" aria-label="File">
+      <button class="ed-btn ed-btn-accent" id="btn-export" title="PNG画像として書き出し">PNG</button>
+      <button class="ed-btn" id="btn-projects" title="プロジェクトの管理（保存・切替・JSON入出力）">Projects</button>
+      <button class="ed-btn" id="btn-guide" title="各ツールの使い方ガイド">Guide</button>
+      <button class="ed-btn" id="btn-shortcuts" title="キーボードショートカット一覧">?</button>
+    </div>
+
+    <!-- モバイル用パネル開閉 -->
+    <button class="ed-btn ed-mobile-only" id="btn-panel-toggle" title="パネルを開閉">Panel</button>
+  </header>
+
+  <div class="ed-body">
+
+    <!-- ==========================================================
+         左：ツールレール（描画ツール・Boolean・DCアイコン）
+         ========================================================== -->
+    <aside class="ed-tools" id="tools-rail">
+      <div class="ed-tool-section" role="group" aria-label="Tools">
+        <button class="ed-tool is-active" data-tool="select" title="選択 / 移動">
+          <svg viewBox="0 0 24 24"><path d="M6 3l12 9-5.5 1L10 19z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>
+          <span>選択</span>
+        </button>
+        <button class="ed-tool" data-tool="rect" title="矩形">
+          <svg viewBox="0 0 24 24"><rect x="4" y="6" width="16" height="12" fill="none" stroke="currentColor" stroke-width="1.8"/></svg>
+          <span>矩形</span>
+        </button>
+        <button class="ed-tool" data-tool="ngon" title="多角形（六角形）">
+          <svg viewBox="0 0 24 24"><polygon points="12,3 20,8 20,16 12,21 4,16 4,8" fill="none" stroke="currentColor" stroke-width="1.8"/></svg>
+          <span>多角形</span>
+        </button>
+        <button class="ed-tool" data-tool="lshape" title="L字">
+          <svg viewBox="0 0 24 24"><path d="M5 4h7v9h7v7H5z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>
+          <span>L字</span>
+        </button>
+        <button class="ed-tool" data-tool="free" title="自由多角形（クリックで頂点追加、ダブルクリックで確定）">
+          <svg viewBox="0 0 24 24"><path d="M4 16l5-10 6 4 5-4v12z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><circle cx="4" cy="16" r="1.6" fill="currentColor"/><circle cx="9" cy="6" r="1.6" fill="currentColor"/><circle cx="20" cy="6" r="1.6" fill="currentColor"/></svg>
+          <span>自由</span>
+        </button>
+        <button class="ed-tool" data-tool="text" title="テキスト">
+          <svg viewBox="0 0 24 24"><path d="M5 6h14M12 6v13" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+          <span>文字</span>
+        </button>
+      </div>
+
+      <!-- Boolean演算（2つ以上の図形を選択して使用） -->
+      <div class="ed-tool-section" role="group" aria-label="Boolean operations">
+        <p class="ed-tool-label">図形の結合</p>
+        <button class="ed-tool ed-bool" data-bool="union" title="接合（Union）">
+          <svg viewBox="0 0 24 24"><path d="M4 4h11v5h5v11H9v-5H4z" fill="currentColor" opacity="0.25"/><path d="M4 4h11v5h5v11H9v-5H4z" fill="none" stroke="currentColor" stroke-width="1.6"/></svg>
+          <span>接合</span>
+        </button>
+        <button class="ed-tool ed-bool" data-bool="difference" title="型抜き（Subtract）">
+          <svg viewBox="0 0 24 24"><path d="M4 4h11v5h-6v6H4z" fill="currentColor" opacity="0.25"/><path d="M4 4h11v5h-6v6H4z" fill="none" stroke="currentColor" stroke-width="1.6"/><rect x="9" y="9" width="11" height="11" fill="none" stroke="currentColor" stroke-width="1.6" stroke-dasharray="2 2"/></svg>
+          <span>型抜き</span>
+        </button>
+        <button class="ed-tool ed-bool" data-bool="intersection" title="重なり抽出（Intersect）">
+          <svg viewBox="0 0 24 24"><rect x="9" y="9" width="6" height="6" fill="currentColor" opacity="0.25"/><rect x="4" y="4" width="11" height="11" fill="none" stroke="currentColor" stroke-width="1.6" stroke-dasharray="2 2"/><rect x="9" y="9" width="11" height="11" fill="none" stroke="currentColor" stroke-width="1.6" stroke-dasharray="2 2"/><rect x="9" y="9" width="6" height="6" fill="none" stroke="currentColor" stroke-width="1.6"/></svg>
+          <span>抽出</span>
+        </button>
+        <button class="ed-tool ed-bool" data-bool="xor" title="重なり除外（Exclude）">
+          <svg viewBox="0 0 24 24"><path d="M4 4h11v5h-6v6H4z" fill="currentColor" opacity="0.25"/><path d="M20 20H9v-5h6V9h5z" fill="currentColor" opacity="0.25"/><path d="M4 4h11v5h5v11H9v-5H4z" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M9 9h6v6H9z" fill="none" stroke="currentColor" stroke-width="1.6"/></svg>
+          <span>除外</span>
+        </button>
+      </div>
+
+      <!-- 編集コマンド（モバイルでも使えるようボタン化） -->
+      <div class="ed-tool-section" role="group" aria-label="Edit commands">
+        <p class="ed-tool-label">編集</p>
+        <button class="ed-tool" id="btn-multi" title="複数選択モード：ONの間、タップ/クリックで選択に追加（タッチ操作向け。PCはShift+クリックでも可）">
+          <svg viewBox="0 0 24 24"><rect x="3" y="3" width="10" height="10" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.8"/><rect x="11" y="11" width="10" height="10" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M5.5 8l2 2 3.5-4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          <span>複数選択</span>
+        </button>
+        <button class="ed-tool" id="btn-copy" title="コピー＆ペースト (Ctrl+C/V)">
+          <svg viewBox="0 0 24 24"><rect x="8" y="8" width="12" height="12" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M5 15V5h10" fill="none" stroke="currentColor" stroke-width="1.8"/></svg>
+          <span>複製</span>
+        </button>
+        <button class="ed-tool" id="btn-delete" title="削除 (Delete)">
+          <svg viewBox="0 0 24 24"><path d="M5 7h14M9 7V5h6v2m-9 0l1 13h10l1-13" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>
+          <span>削除</span>
+        </button>
+      </div>
+
+      <!-- DCアイコンパレット（JSがインラインSVGを注入する） -->
+      <div class="ed-tool-section" role="group" aria-label="Icons">
+        <p class="ed-tool-label">アイコン</p>
+        <div class="ed-icon-grid" id="icon-grid"></div>
+      </div>
+    </aside>
+
+    <!-- ==========================================================
+         中央：キャンバスステージ
+         ========================================================== -->
+    <main class="ed-stage" id="stage-wrap">
+      <canvas id="stage"></canvas>
+      <!-- テキスト入力用の浮遊レイヤー -->
+      <div id="overlay-layer"></div>
+      <!-- 操作ヒント -->
+      <p class="ed-hint" id="hint"></p>
+    </main>
+
+    <!-- ==========================================================
+         右：角度・フロア・プロパティパネル
+         ========================================================== -->
+    <aside class="ed-panel" id="side-panel">
+
+      <section class="ed-card">
+        <h2 class="ed-card-title">View Angle</h2>
+        <div class="ed-angle-row">
+          <label for="ang-x">X</label>
+          <input type="range" id="ang-x" min="0" max="85" step="1" value="0">
+          <input type="number" id="num-x" min="0" max="85" step="1" value="0">
+        </div>
+        <div class="ed-angle-row">
+          <label for="ang-y">Y</label>
+          <input type="range" id="ang-y" min="-45" max="45" step="1" value="0">
+          <input type="number" id="num-y" min="-45" max="45" step="1" value="0">
+        </div>
+        <div class="ed-angle-row">
+          <label for="ang-z">Z</label>
+          <input type="range" id="ang-z" min="0" max="360" step="1" value="0">
+          <input type="number" id="num-z" min="0" max="360" step="1" value="0">
+        </div>
+      </section>
+
+      <section class="ed-card">
+        <h2 class="ed-card-title">Floors</h2>
+        <ul class="ed-floor-list" id="floor-list"></ul>
+        <button class="ed-btn ed-btn-wide" id="btn-add-floor">＋ フロアを追加</button>
+      </section>
+
+      <section class="ed-card">
+        <h2 class="ed-card-title">Properties</h2>
+        <div id="props"></div>
+      </section>
+
+    </aside>
+  </div>
+
+  <!-- ============================================================
+       起動ローディング演出
+       ============================================================ -->
+  <div id="ed-loading" aria-hidden="true">
+    <svg viewBox="0 0 40 40">
+      <polygon points="20,22 34,29 20,36 6,29" fill="var(--color-ink)"/>
+      <polygon points="20,13 34,20 20,27 6,20" fill="var(--color-surface-2)"/>
+      <polygon points="20,4 34,11 20,18 6,11" fill="var(--color-accent)"/>
+    </svg>
+    <p>AXONOM — Loading Studio</p>
+  </div>
+
+  <!-- ============================================================
+       モーダル：PNG出力オプション
+       ============================================================ -->
+  <div class="ed-modal-backdrop" id="modal-export">
+    <div class="ed-modal" role="dialog" aria-label="PNG出力">
+      <h2 class="ed-card-title">Export PNG</h2>
+
+      <p class="ed-modal-label">背景</p>
+      <div class="ed-radio-group">
+        <label><input type="radio" name="exp-bg" value="transparent" checked>
+          透明<small>（PPT貼り付け用）</small></label>
+        <label><input type="radio" name="exp-bg" value="white">白</label>
+        <label><input type="radio" name="exp-bg" value="theme">テーマカラー</label>
+      </div>
+
+      <p class="ed-modal-label">解像度</p>
+      <div class="ed-radio-group">
+        <label><input type="radio" name="exp-scale" value="1" checked>等倍</label>
+        <label><input type="radio" name="exp-scale" value="2">2倍<small>（Retina対応）</small></label>
+      </div>
+
+      <p class="ed-prop-hint">
+        表示中の全フロアが、現在の角度・視点のまま出力されます。<br>
+        グリッドと選択枠は含まれません。
+      </p>
+
+      <div class="ed-modal-actions">
+        <button class="ed-btn" data-close-modal="modal-export">キャンセル</button>
+        <button class="ed-btn ed-btn-accent" id="btn-export-run">書き出す</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============================================================
+       モーダル：プロジェクト管理
+       ============================================================ -->
+  <div class="ed-modal-backdrop" id="modal-projects">
+    <div class="ed-modal" role="dialog" aria-label="プロジェクト管理">
+      <h2 class="ed-card-title">Projects</h2>
+      <p class="ed-prop-hint">作業内容は自動保存されます。JSONで書き出せば他の端末とも共有できます。</p>
+      <ul class="ed-project-list" id="project-list"></ul>
+      <div class="ed-modal-actions">
+        <button class="ed-btn" id="btn-project-new">＋ 新規作成</button>
+        <button class="ed-btn" id="btn-project-export">JSON書き出し</button>
+        <button class="ed-btn" id="btn-project-import">JSON読み込み</button>
+        <button class="ed-btn" data-close-modal="modal-projects">閉じる</button>
+      </div>
+      <input type="file" id="project-import-file" accept=".json,application/json" hidden>
+    </div>
+  </div>
+
+  <!-- ============================================================
+       モーダル：操作ガイド
+       端末（マウス / タッチ）に応じて既定タブを切り替える。
+       タブ自体も手動で切替可能。
+       ============================================================ -->
+  <div class="ed-modal-backdrop" id="modal-guide">
+    <div class="ed-modal ed-modal-wide" role="dialog" aria-label="操作ガイド">
+      <h2 class="ed-card-title">How to Use</h2>
+
+      <!-- 入力デバイス切替タブ -->
+      <div class="ed-guide-tabs" role="tablist">
+        <button class="ed-btn" id="guide-tab-mouse" role="tab">🖱 マウス操作</button>
+        <button class="ed-btn" id="guide-tab-touch" role="tab">👆 指で操作</button>
+      </div>
+
+      <!-- ======== マウス／キーボード向けガイド ======== -->
+      <div class="ed-guide" id="guide-mouse">
+        <section>
+          <h3>図形を描く</h3>
+          <table><tbody>
+            <tr><td>矩形・多角形・L字</td><td>ツールを選び、キャンバス上をドラッグ。</td></tr>
+            <tr><td>自由多角形</td><td>「自由」を選びクリックで頂点を追加。ダブルクリックか<kbd>Enter</kbd>で確定。</td></tr>
+            <tr><td>形を変える</td><td>図形をダブルクリック→白い頂点ハンドルをドラッグ。空クリックで終了。</td></tr>
+            <tr><td>厚みを付ける</td><td>図形を選択→右パネルの「厚み」に数値入力。3D視点で立体になる。</td></tr>
+          </tbody></table>
+        </section>
+        <section>
+          <h3>選択・編集</h3>
+          <table><tbody>
+            <tr><td>選択 / 移動</td><td>クリックで選択、そのままドラッグで移動。</td></tr>
+            <tr><td><strong>複数選択</strong></td><td><kbd>Shift</kbd>＋クリックで追加・解除。または左の「複数選択」をONにしてクリック。<kbd>Ctrl</kbd>+<kbd>A</kbd>で階の全選択。</td></tr>
+            <tr><td>図形の結合</td><td>2つ以上選択→左の「接合 / 型抜き / 抽出 / 除外」。<strong>最初に選んだ図形が型抜きの土台</strong>になる。</td></tr>
+            <tr><td>複製 / 削除</td><td><kbd>Ctrl</kbd>+<kbd>D</kbd>で複製、<kbd>Delete</kbd>で削除。左のボタンでも可。</td></tr>
+            <tr><td>色・透明度・枠線</td><td>図形を選択→右パネルで個別設定。スウォッチでテーマ色を即適用。</td></tr>
+          </tbody></table>
+        </section>
+        <section>
+          <h3>視点・画面</h3>
+          <table><tbody>
+            <tr><td>平面図⇄3D</td><td>上部の「Plan / 3D」ボタン。プリセット（真上 / Isometric / Cabinet）もワンクリック。</td></tr>
+            <tr><td>角度の微調整</td><td>右パネルのX/Y/Zスライダーまたは数値入力。リアルタイムに反映。</td></tr>
+            <tr><td>ズーム / パン</td><td>ホイールでズーム、何もない場所をドラッグ（または<kbd>Space</kbd>＋ドラッグ）で画面移動。「Fit」で全体表示。</td></tr>
+            <tr><td>フロア（階層）</td><td>右パネルで追加・表示切替・▲▼で並べ替え。3D視点では階ごとに積み上がる。</td></tr>
+          </tbody></table>
+        </section>
+        <section>
+          <h3>アイコン・文字・出力</h3>
+          <table><tbody>
+            <tr><td>DCアイコン</td><td>左のパレットから選び、置きたい場所をクリック。選択して右下ハンドルか右パネルでサイズ変更。</td></tr>
+            <tr><td>監視カメラ</td><td>配置後に右パネルの「向き」スライダーで視野の扇形が回転。</td></tr>
+            <tr><td>テキスト</td><td>「文字」を選び配置場所をクリック→入力して<kbd>Enter</kbd>。ダブルクリックで再編集。</td></tr>
+            <tr><td>PNG書き出し</td><td>上部「PNG」→背景（透明/白/テーマ）と解像度を選んで書き出す。今見えている角度のまま出力される。</td></tr>
+            <tr><td>保存</td><td>自動保存。上部「Projects」で複数マップの管理とJSON入出力。</td></tr>
+          </tbody></table>
+        </section>
+      </div>
+
+      <!-- ======== スマホ・タブレット（指操作）向けガイド ======== -->
+      <div class="ed-guide" id="guide-touch">
+        <section>
+          <h3>図形を描く</h3>
+          <table><tbody>
+            <tr><td>矩形・多角形・L字</td><td>下のツールを選び、キャンバスを指でドラッグ。</td></tr>
+            <tr><td>自由多角形</td><td>「自由」を選びタップで頂点を追加。<strong>描き終えたら「選択」ツールをタップすると確定</strong>（ダブルタップでも可）。</td></tr>
+            <tr><td>形を変える</td><td>図形をダブルタップ→白い頂点ハンドルを指でドラッグ。何もない場所をタップで終了。</td></tr>
+          </tbody></table>
+        </section>
+        <section>
+          <h3>選択・編集</h3>
+          <table><tbody>
+            <tr><td>選択 / 移動</td><td>図形をタップで選択、そのまま指でドラッグすると移動。</td></tr>
+            <tr><td><strong>複数選択</strong></td><td>下の「複数選択」をONにすると、タップした図形が次々と選択に追加される（もう一度タップで解除）。図形の結合はこの状態で「接合」などを押す。</td></tr>
+            <tr><td>複製 / 削除</td><td>図形を選択して下の「複製」「削除」ボタン。</td></tr>
+            <tr><td>色や厚みの変更</td><td>図形を選択→右上「Panel」を開いてプロパティを調整。</td></tr>
+          </tbody></table>
+        </section>
+        <section>
+          <h3>画面の操作</h3>
+          <table><tbody>
+            <tr><td>拡大・縮小</td><td><strong>2本指でピンチ</strong>。上部の「−／＋」ボタンでも可。</td></tr>
+            <tr><td>画面を動かす</td><td>何もない場所を指でドラッグ。迷子になったら「Fit」で全体表示。</td></tr>
+            <tr><td>視点の切替</td><td>上部の「Plan / 3D」やプリセットをタップ。細かい角度は「Panel」内のスライダーで。</td></tr>
+          </tbody></table>
+        </section>
+        <section>
+          <h3>アイコン・文字・出力</h3>
+          <table><tbody>
+            <tr><td>DCアイコン</td><td>下のパレットを左右にスクロールして選び、置きたい場所をタップ。</td></tr>
+            <tr><td>テキスト</td><td>「文字」を選んで配置場所をタップ→入力。ダブルタップで再編集。</td></tr>
+            <tr><td>PNG書き出し / 保存</td><td>上部バーを左右にスクロールして「PNG」「Projects」へ。作業は自動保存される。</td></tr>
+          </tbody></table>
+        </section>
+      </div>
+
+      <div class="ed-modal-actions">
+        <button class="ed-btn" data-close-modal="modal-guide">閉じる</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============================================================
+       モーダル：キーボードショートカット一覧
+       ============================================================ -->
+  <div class="ed-modal-backdrop" id="modal-shortcuts">
+    <div class="ed-modal" role="dialog" aria-label="ショートカット一覧">
+      <h2 class="ed-card-title">Keyboard Shortcuts</h2>
+      <table class="ed-shortcut-table">
+        <tbody>
+          <tr><td><kbd>Ctrl</kbd>+<kbd>Z</kbd></td><td>元に戻す</td></tr>
+          <tr><td><kbd>Ctrl</kbd>+<kbd>Y</kbd></td><td>やり直す</td></tr>
+          <tr><td><kbd>Ctrl</kbd>+<kbd>C</kbd> / <kbd>V</kbd></td><td>コピー / 貼り付け</td></tr>
+          <tr><td><kbd>Ctrl</kbd>+<kbd>D</kbd></td><td>複製</td></tr>
+          <tr><td><kbd>Ctrl</kbd>+<kbd>A</kbd></td><td>アクティブ階の全選択</td></tr>
+          <tr><td><kbd>Delete</kbd></td><td>削除</td></tr>
+          <tr><td><kbd>Space</kbd>＋ドラッグ</td><td>画面のパン（移動）</td></tr>
+          <tr><td><kbd>Shift</kbd>＋クリック</td><td>複数選択（Boolean演算用）</td></tr>
+          <tr><td><kbd>Enter</kbd></td><td>自由多角形を確定</td></tr>
+          <tr><td><kbd>Esc</kbd></td><td>選択解除・作図キャンセル</td></tr>
+          <tr><td>ダブルクリック</td><td>頂点編集 / テキスト編集</td></tr>
+          <tr><td>ホイール / ピンチ</td><td>ズーム</td></tr>
+        </tbody>
+      </table>
+      <div class="ed-modal-actions">
+        <button class="ed-btn" data-close-modal="modal-shortcuts">閉じる</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="js/editor.js" defer></script>
+  <script src="js/export.js" defer></script>
+  <script src="js/theme.js" defer></script>
+</body>
+</html>

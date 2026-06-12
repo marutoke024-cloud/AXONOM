@@ -1,0 +1,45 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <!--
+    AXONOM PWA アイコン（maskable 用）。
+    OSが円形などに切り抜いても欠けないよう、
+    モチーフ全体を中央のセーフゾーン（約80%）に収めた版。
+  -->
+  <defs>
+    <linearGradient id="plateShadeM" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#3A362F"/>
+      <stop offset="1" stop-color="#2D2A26"/>
+    </linearGradient>
+  </defs>
+
+  <!-- 背景はフルブリードのまま（マスク領域全体を塗る） -->
+  <rect width="512" height="512" fill="#EDEAE4"/>
+  <circle cx="400" cy="100" r="150" fill="#E5E1D9"/>
+
+  <!-- モチーフをセーフゾーンに収めるため中央基準で76%に縮小 -->
+  <g transform="translate(256 256) scale(0.76) translate(-256 -256)">
+    <!-- 最下層：インク色のプレート -->
+    <g>
+      <polygon points="256,316 416,396 256,476 96,396" fill="url(#plateShadeM)"/>
+      <polygon points="96,396 256,476 256,492 96,412" fill="#211E1B"/>
+      <polygon points="416,396 256,476 256,492 416,412" fill="#171512"/>
+    </g>
+    <!-- 中層：グレージュトーン -->
+    <g>
+      <polygon points="256,212 416,292 256,372 96,292" fill="#CFC9BE"/>
+      <polygon points="96,292 256,372 256,388 96,308" fill="#B8B1A4"/>
+      <polygon points="416,292 256,372 256,388 416,308" fill="#A8A093"/>
+    </g>
+    <!-- 最上層：テラコッタ -->
+    <g>
+      <polygon points="256,108 416,188 256,268 96,188" fill="#C96F4A"/>
+      <polygon points="96,188 256,268 256,284 96,204" fill="#B05A38"/>
+      <polygon points="416,188 256,268 256,284 416,204" fill="#9C4E2F"/>
+    </g>
+    <!-- ラックの抽象ブロック -->
+    <g>
+      <polygon points="256,96 296,116 256,136 216,116" fill="#F4F1EB"/>
+      <polygon points="216,116 256,136 256,168 216,148" fill="#DDD8CE"/>
+      <polygon points="296,116 256,136 256,168 296,148" fill="#C6C0B3"/>
+    </g>
+  </g>
+</svg>

@@ -1,0 +1,216 @@
+/* ============================================================
+   AXONOM — global.css
+   全画面共通のデザイントークン・リセット・タイポグラフィ。
+   ライトグレージュを基調とし、5種のテーマパレットを
+   CSSカスタムプロパティとして定義する。
+   ============================================================ */
+
+/* ------------------------------------------------------------
+   1. テーマパレット定義
+   Figma の配色リファレンスを参考に、明るく洗練された
+   「ベース / 面 / インク / アクセント」の4役で構成した5種。
+   <html data-theme="..."> の切り替えで全体に反映される。
+   ------------------------------------------------------------ */
+
+:root,
+[data-theme="greige"] {
+  /* 01 Greige — 既定。温かみのある灰褐色×テラコッタ */
+  --color-bg: #edeae4;          /* ページ背景 */
+  --color-surface: #f6f4ef;     /* カード・パネル面 */
+  --color-surface-2: #e2ded6;   /* 一段沈んだ面 */
+  --color-ink: #2d2a26;         /* 主要テキスト */
+  --color-ink-soft: #6f6a61;    /* 補助テキスト */
+  --color-line: #d5d0c6;        /* 罫線 */
+  --color-accent: #c96f4a;      /* アクセント（テラコッタ） */
+  --color-accent-soft: #e8c4b2; /* アクセントの淡色 */
+  --color-accent-ink: #ffffff;  /* アクセント上の文字色 */
+}
+
+[data-theme="sage"] {
+  /* 02 Sage — 落ち着いた灰緑。植栽・冷却ゾーンと好相性 */
+  --color-bg: #e9ede6;
+  --color-surface: #f4f6f1;
+  --color-surface-2: #dde3d8;
+  --color-ink: #272b25;
+  --color-ink-soft: #67705f;
+  --color-line: #ccd4c5;
+  --color-accent: #5f8a68;
+  --color-accent-soft: #bdd4c2;
+  --color-accent-ink: #ffffff;
+}
+
+[data-theme="mist"] {
+  /* 03 Mist — 涼やかな青灰。テック・外資系向けの清潔感 */
+  --color-bg: #e8ecf0;
+  --color-surface: #f4f6f9;
+  --color-surface-2: #dbe1e8;
+  --color-ink: #23282e;
+  --color-ink-soft: #5e6873;
+  --color-line: #c8d1da;
+  --color-accent: #4a6fa5;
+  --color-accent-soft: #b9c9e0;
+  --color-accent-ink: #ffffff;
+}
+
+[data-theme="sand"] {
+  /* 04 Sand — 砂色×深い黄土。図面の暖色系に映える */
+  --color-bg: #f0e9dd;
+  --color-surface: #f9f4ec;
+  --color-surface-2: #e5dccb;
+  --color-ink: #2f2a21;
+  --color-ink-soft: #75694f;
+  --color-line: #dcd2bd;
+  --color-accent: #a8842e;
+  --color-accent-soft: #e3d3a8;
+  --color-accent-ink: #ffffff;
+}
+
+[data-theme="lavender"] {
+  /* 05 Lavender — 灰紫。柔らかいのに個性が立つ */
+  --color-bg: #eceaf2;
+  --color-surface: #f6f5fa;
+  --color-surface-2: #dfdcea;
+  --color-ink: #28252f;
+  --color-ink-soft: #6a6477;
+  --color-line: #d2cde0;
+  --color-accent: #7b6cd9;
+  --color-accent-soft: #c9c2ee;
+  --color-accent-ink: #ffffff;
+}
+
+/* ------------------------------------------------------------
+   2. 共通トークン（テーマに依存しない値）
+   ------------------------------------------------------------ */
+:root {
+  /* タイポグラフィ：欧文は幾何学的なグロテスク、和文はNoto Sans JP */
+  --font-display: "Space Grotesk", "Noto Sans JP", sans-serif;
+  --font-body: "Noto Sans JP", "Space Grotesk", sans-serif;
+
+  /* 余白・角丸・影 */
+  --space-unit: clamp(16px, 2.4vw, 28px);
+  --radius-s: 8px;
+  --radius-m: 14px;
+  --radius-pill: 999px;
+  --shadow-soft: 0 18px 50px -24px rgba(45, 42, 38, 0.35);
+
+  /* モーション */
+  --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
+  --duration-fast: 0.25s;
+  --duration-slow: 0.8s;
+}
+
+/* ------------------------------------------------------------
+   3. リセット
+   ------------------------------------------------------------ */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  font-family: var(--font-body);
+  background: var(--color-bg);
+  color: var(--color-ink);
+  line-height: 1.7;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+img,
+svg,
+canvas {
+  display: block;
+  max-width: 100%;
+}
+
+button {
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: none;
+  cursor: pointer;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+ul,
+ol {
+  list-style: none;
+}
+
+/* ------------------------------------------------------------
+   4. 共通タイポグラフィ
+   ------------------------------------------------------------ */
+h1,
+h2,
+h3 {
+  font-family: var(--font-display);
+  font-weight: 600;
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+}
+
+/* 欧文の小さなラベル（要所の英語表記に使う共通スタイル） */
+.eyebrow {
+  font-family: var(--font-display);
+  font-size: 0.72rem;
+  font-weight: 500;
+  letter-spacing: 0.32em;
+  text-transform: uppercase;
+  color: var(--color-ink-soft);
+}
+
+/* ------------------------------------------------------------
+   5. 共通部品
+   ------------------------------------------------------------ */
+
+/* 主ボタン（塗り） */
+.btn-primary {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.75em;
+  padding: 1em 2.2em;
+  border-radius: var(--radius-pill);
+  background: var(--color-ink);
+  color: var(--color-bg);
+  font-family: var(--font-display);
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  transition:
+    background var(--duration-fast) ease,
+    transform var(--duration-fast) var(--ease-out-expo),
+    box-shadow var(--duration-fast) ease;
+}
+
+.btn-primary:hover {
+  background: var(--color-accent);
+  color: var(--color-accent-ink);
+  box-shadow: var(--shadow-soft);
+}
+
+/* キーボード操作時のフォーカスを明確に */
+:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 3px;
+}
+
+/* OS設定で「視差効果を減らす」を選んだユーザーへの配慮 */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

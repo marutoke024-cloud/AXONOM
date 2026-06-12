@@ -1,0 +1,55 @@
+{
+  "_comment": "AXONOM テーマカラー定義（正本は css/global.css のCSSカスタムプロパティ。本ファイルはJSからの参照・ドキュメント用）",
+  "themes": [
+    {
+      "id": "greige",
+      "label": "Greige",
+      "description": "温かみのある灰褐色×テラコッタ。既定テーマ。",
+      "colors": {
+        "bg": "#edeae4", "surface": "#f6f4ef", "surface2": "#e2ded6",
+        "ink": "#2d2a26", "inkSoft": "#6f6a61", "line": "#d5d0c6",
+        "accent": "#c96f4a", "accentSoft": "#e8c4b2", "accentInk": "#ffffff"
+      }
+    },
+    {
+      "id": "sage",
+      "label": "Sage",
+      "description": "落ち着いた灰緑。植栽・冷却ゾーンと好相性。",
+      "colors": {
+        "bg": "#e9ede6", "surface": "#f4f6f1", "surface2": "#dde3d8",
+        "ink": "#272b25", "inkSoft": "#67705f", "line": "#ccd4c5",
+        "accent": "#5f8a68", "accentSoft": "#bdd4c2", "accentInk": "#ffffff"
+      }
+    },
+    {
+      "id": "mist",
+      "label": "Mist",
+      "description": "涼やかな青灰。テック・外資系向けの清潔感。",
+      "colors": {
+        "bg": "#e8ecf0", "surface": "#f4f6f9", "surface2": "#dbe1e8",
+        "ink": "#23282e", "inkSoft": "#5e6873", "line": "#c8d1da",
+        "accent": "#4a6fa5", "accentSoft": "#b9c9e0", "accentInk": "#ffffff"
+      }
+    },
+    {
+      "id": "sand",
+      "label": "Sand",
+      "description": "砂色×深い黄土。図面の暖色系に映える。",
+      "colors": {
+        "bg": "#f0e9dd", "surface": "#f9f4ec", "surface2": "#e5dccb",
+        "ink": "#2f2a21", "inkSoft": "#75694f", "line": "#dcd2bd",
+        "accent": "#a8842e", "accentSoft": "#e3d3a8", "accentInk": "#ffffff"
+      }
+    },
+    {
+      "id": "lavender",
+      "label": "Lavender",
+      "description": "灰紫。柔らかいのに個性が立つ。",
+      "colors": {
+        "bg": "#eceaf2", "surface": "#f6f5fa", "surface2": "#dfdcea",
+        "ink": "#28252f", "inkSoft": "#6a6477", "line": "#d2cde0",
+        "accent": "#7b6cd9", "accentSoft": "#c9c2ee", "accentInk": "#ffffff"
+      }
+    }
+  ]
+}

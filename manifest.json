@@ -1,0 +1,26 @@
+{
+  "name": "AXONOM — Spatial Mapping Studio",
+  "short_name": "AXONOM",
+  "description": "Craft elegant floor maps for data center facilities. Plan view, axonometric view, stacked floors.",
+  "lang": "ja",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#EDEAE4",
+  "theme_color": "#EDEAE4",
+  "icons": [
+    {
+      "src": "assets/icons/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "assets/icons/icon-maskable.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "maskable"
+    }
+  ]
+}

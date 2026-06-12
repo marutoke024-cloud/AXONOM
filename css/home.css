@@ -1,0 +1,304 @@
+/* ============================================================
+   AXONOM — home.css
+   ホーム画面のレイアウト。
+   3D背景キャンバスの上にタイポグラフィ主体のヒーローを重ねる。
+   画面幅いっぱいを使い、余白そのものをデザインとして扱う。
+   ============================================================ */
+
+/* ページ全体：1画面に収め、スクロールさせない構成 */
+html,
+body {
+  height: 100%;
+}
+
+body {
+  display: flex;
+  flex-direction: column;
+  min-height: 100dvh;
+  overflow: hidden;
+}
+
+/* ------------------------------------------------------------
+   3D背景キャンバス
+   画面全体に固定し、UIの背面（z-index: 0）に敷く。
+   ------------------------------------------------------------ */
+#bg-canvas {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 0;
+}
+
+/* キャンバスより上に乗せるUIレイヤー */
+.site-header,
+.hero,
+.site-footer {
+  position: relative;
+  z-index: 1;
+}
+
+/* ------------------------------------------------------------
+   ヘッダー：左にブランド、右にテーマパレット
+   ------------------------------------------------------------ */
+.site-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-unit);
+  padding: calc(var(--space-unit) * 0.9) calc(var(--space-unit) * 1.4);
+}
+
+.brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.65em;
+}
+
+.brand-mark {
+  width: 30px;
+  height: 30px;
+}
+
+.brand-name {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 1.05rem;
+  letter-spacing: 0.22em;
+}
+
+/* テーマ切替ドット */
+.theme-picker {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 14px;
+  border-radius: var(--radius-pill);
+  background: color-mix(in srgb, var(--color-surface) 72%, transparent);
+  border: 1px solid var(--color-line);
+  backdrop-filter: blur(6px);
+}
+
+.theme-picker-label {
+  font-family: var(--font-display);
+  font-size: 0.66rem;
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
+  color: var(--color-ink-soft);
+  margin-right: 2px;
+}
+
+.theme-dot {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--dot);
+  border: 2px solid transparent;
+  transition: transform var(--duration-fast) var(--ease-out-expo), border-color var(--duration-fast) ease;
+}
+
+.theme-dot:hover {
+  transform: scale(1.25);
+}
+
+.theme-dot.is-active {
+  border-color: var(--color-ink);
+  transform: scale(1.15);
+}
+
+/* ------------------------------------------------------------
+   ヒーロー：左寄せの大型タイポグラフィ
+   画面の右側〜中央は3D背景の見せ場として大きく空ける。
+   ------------------------------------------------------------ */
+.hero {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: calc(var(--space-unit) * 0.9);
+  padding: 0 calc(var(--space-unit) * 1.4);
+  max-width: 1280px;
+  width: 100%;
+  margin: 0 auto;
+}
+
+/* 見出しの背後に背景色の柔らかな光だまりを敷き、
+   3Dモチーフ（暗色プレート）と重なっても文字が沈まないようにする */
+.hero::before {
+  content: "";
+  position: absolute;
+  top: -12%;
+  bottom: -12%;
+  left: -8%;
+  right: 34%;
+  background: radial-gradient(
+    ellipse at 32% 50%,
+    color-mix(in srgb, var(--color-bg) 92%, transparent) 0%,
+    color-mix(in srgb, var(--color-bg) 55%, transparent) 55%,
+    transparent 78%
+  );
+  pointer-events: none;
+  z-index: 0;
+}
+
+.hero > * {
+  position: relative;
+  z-index: 1;
+}
+
+/* 仕上げの保険として、文字の輪郭にも背景色のにじみを足す */
+.hero-title {
+  text-shadow:
+    0 2px 18px var(--color-bg),
+    0 0 42px var(--color-bg);
+}
+
+.hero-title {
+  font-size: clamp(2.6rem, 7.2vw, 6.4rem);
+  font-weight: 600;
+  letter-spacing: -0.03em;
+}
+
+/* 行ごとのマスク：GSAPで .line-inner を下からせり上げる */
+.hero-title .line {
+  display: block;
+  overflow: hidden;
+}
+
+.hero-title .line-inner {
+  display: inline-block;
+  will-change: transform;
+}
+
+.hero-title .accent {
+  color: var(--color-accent);
+  transition: color 0.4s ease;
+}
+
+.hero-copy {
+  font-size: clamp(0.92rem, 1.4vw, 1.08rem);
+  color: var(--color-ink-soft);
+  max-width: 36em;
+}
+
+.hero-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: calc(var(--space-unit) * 0.8);
+  margin-top: calc(var(--space-unit) * 0.4);
+}
+
+.hero-note {
+  font-family: var(--font-display);
+  font-size: 0.78rem;
+  letter-spacing: 0.08em;
+  color: var(--color-ink-soft);
+}
+
+/* ボタン内矢印：ホバーで少し進む */
+.btn-primary svg {
+  transition: transform var(--duration-fast) var(--ease-out-expo);
+}
+
+.btn-primary:hover svg {
+  transform: translateX(4px);
+}
+
+/* ------------------------------------------------------------
+   フッター：機能メタ情報を横並びで
+   ------------------------------------------------------------ */
+.site-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-unit);
+  padding: calc(var(--space-unit) * 0.9) calc(var(--space-unit) * 1.4);
+}
+
+.meta-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6em 2.2em;
+}
+
+.meta-list li {
+  font-family: var(--font-display);
+  font-size: 0.74rem;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--color-ink-soft);
+  position: relative;
+}
+
+/* 項目間の小さな区切りドット */
+.meta-list li:not(:first-child)::before {
+  content: "";
+  position: absolute;
+  left: -1.25em;
+  top: 50%;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--color-accent);
+  transform: translateY(-50%);
+}
+
+.meta-version {
+  font-family: var(--font-display);
+  font-size: 0.74rem;
+  letter-spacing: 0.18em;
+  color: var(--color-ink-soft);
+  white-space: nowrap;
+}
+
+/* ------------------------------------------------------------
+   ページ遷移オーバーレイ
+   Start Creating 押下時にインク色の幕が下から立ち上がる。
+   ------------------------------------------------------------ */
+.page-transition {
+  position: fixed;
+  inset: 0;
+  z-index: 10;
+  background: var(--color-ink);
+  transform: scaleY(0);
+  transform-origin: bottom;
+  pointer-events: none;
+}
+
+/* ------------------------------------------------------------
+   GSAP登場アニメの初期状態
+   JSが無効でも読めるよう、JS有効時のみ透明にする
+   （home.js が <html> に .js を付与する）
+   ------------------------------------------------------------ */
+.js .reveal {
+  opacity: 0;
+}
+
+.js .hero-title .line-inner {
+  transform: translateY(110%);
+}
+
+/* ------------------------------------------------------------
+   レスポンシブ：モバイル
+   ------------------------------------------------------------ */
+@media (max-width: 640px) {
+  .theme-picker-label {
+    display: none; /* 幅が足りないのでドットのみ表示 */
+  }
+
+  .hero {
+    justify-content: flex-end;
+    padding-bottom: calc(var(--space-unit) * 1.2);
+  }
+
+  .site-footer {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.8em;
+  }
+
+  .meta-list {
+    gap: 0.5em 1.8em;
+  }
+}
