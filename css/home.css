@@ -122,37 +122,6 @@ body {
   margin: 0 auto;
 }
 
-/* 見出しの背後に背景色の柔らかな光だまりを敷き、
-   3Dモチーフ（暗色プレート）と重なっても文字が沈まないようにする */
-.hero::before {
-  content: "";
-  position: absolute;
-  top: -12%;
-  bottom: -12%;
-  left: -8%;
-  right: 34%;
-  background: radial-gradient(
-    ellipse at 32% 50%,
-    color-mix(in srgb, var(--color-bg) 92%, transparent) 0%,
-    color-mix(in srgb, var(--color-bg) 55%, transparent) 55%,
-    transparent 78%
-  );
-  pointer-events: none;
-  z-index: 0;
-}
-
-.hero > * {
-  position: relative;
-  z-index: 1;
-}
-
-/* 仕上げの保険として、文字の輪郭にも背景色のにじみを足す */
-.hero-title {
-  text-shadow:
-    0 2px 18px var(--color-bg),
-    0 0 42px var(--color-bg);
-}
-
 .hero-title {
   font-size: clamp(2.6rem, 7.2vw, 6.4rem);
   font-weight: 600;

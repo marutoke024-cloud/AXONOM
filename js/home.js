@@ -187,8 +187,7 @@ function layout() {
   /* デスクトップでは文字を左に置くため、モチーフを右へ寄せる。
      モバイルでは中央上部に配置する */
   if (aspect > 1) {
-    /* 見出しとの重なりを減らすため、モチーフはやや右寄りに置く */
-    stack.position.set(frustumHeight * aspect * 0.28, 0, 0);
+    stack.position.set(frustumHeight * aspect * 0.22, 0, 0);
   } else {
     stack.position.set(0, 2.2, 0);
   }
