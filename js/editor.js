@@ -40,6 +40,8 @@ const GRID = 20;             // グリッド1マスのワールド単位
 const FLOOR_GAP = 170;       // 階層間の高さ（ワールド単位）
 const DEFAULT_HEIGHT = 60;   // 図形押し出しの初期厚み
 const MIN_DRAG = 6;          // これ未満のドラッグはクリック扱い
+const WALL_THICKNESS = 10;   // 壁ツールの既定の厚み（平面では太い直線に見える）
+const WALL_HEIGHT = 120;     // 壁ツールの既定の高さ
 
 /* CSSカスタムプロパティを読む（テーマ連動の要） */
 const cssVar = (name) =>
@@ -308,10 +310,13 @@ const ICONS = {
     '<path d="M34 32V12"/>' +
     '<path d="M14 32c0-11 9-20 20-20"/></svg>' },
   door2: { label: "両開き扉", svg: SVG_HEAD +
-    /* 建築記号：両側から開く2枚の扉と弧 */
-    '<path d="M2 32h6M40 32h6"/>' +
-    '<path d="M8 32V16M40 32V16"/>' +
-    '<path d="M8 16c0 9 7 16 16 16M40 16c0 9-7 16-16 16"/></svg>' },
+    /* 建築記号：両側の壁にヒンジ、左右の扉が中央へ開く。
+       開いた扉＝縦線、開閉軌跡＝ヒンジ中心の1/4円弧。2本の弧が
+       中央(24,32)で合わさってM字になる */
+    '<path d="M2 32h9M37 32h9"/>' +              /* 左右の壁 */
+    '<path d="M11 32V19M37 32V19"/>' +           /* 開いた扉（縦） */
+    '<path d="M11 19A13 13 0 0 1 24 32"/>' +     /* 左扉の開閉弧 */
+    '<path d="M37 19A13 13 0 0 0 24 32"/></svg>' },  /* 右扉の開閉弧 */
 };
 
 /* SVG → Image のキャッシュ（kind|色 をキーに） */
@@ -550,7 +555,17 @@ const ICON_3D_H = {
 function drawIcon3D(s, elev) {
   const T = s.tint || cssVar("--color-ink");
   const tf = shapeTransform(s, elev); // アイコン個別の回転
-  const parts = ICON_MODELS[s.kind](s, T);
+  let parts = ICON_MODELS[s.kind](s, T);
+  /* 左右/上下反転：各パーツの底面リングを中心(s.x, s.y)で鏡映する */
+  if (s.flipH || s.flipV) {
+    parts = parts.map((p) => ({
+      ...p,
+      ring: p.ring.map(([x, y]) => [
+        s.flipH ? 2 * s.x - x : x,
+        s.flipV ? 2 * s.y - y : y,
+      ]),
+    }));
+  }
   parts
     .map((p) => {
       let cx = 0, cy = 0;
@@ -592,6 +607,18 @@ function newPoly(rings) {
     stroke: cssVar("--color-ink"),
     strokeWidth: 1.5,
     height: DEFAULT_HEIGHT,
+  };
+}
+
+/* 壁：床色の不透明な細長い箱。壁らしく高めに立ち上げる */
+function newWall(rings) {
+  return {
+    id: uid(), type: "poly", rings,
+    fill: cssVar("--color-ink"),
+    opacity: 1,
+    stroke: cssVar("--color-ink"),
+    strokeWidth: 0,
+    height: WALL_HEIGHT,
   };
 }
 
@@ -890,7 +917,16 @@ function drawIcon(s, elev) {
   const img = iconImage(s.kind, s.tint || cssVar("--color-ink"));
   if (!img.complete) return; // 読み込み中はスキップ（onloadで再描画）
   const w = s.w * view.zoom, h = s.h * view.zoom;
-  ctx.drawImage(img, p.x - w / 2, p.y - h / 2, w, h);
+  /* 左右/上下反転（平面図の記号の向きを変える）。中心を軸に鏡映する */
+  if (s.flipH || s.flipV) {
+    ctx.save();
+    ctx.translate(p.x, p.y);
+    ctx.scale(s.flipH ? -1 : 1, s.flipV ? -1 : 1);
+    ctx.drawImage(img, -w / 2, -h / 2, w, h);
+    ctx.restore();
+  } else {
+    ctx.drawImage(img, p.x - w / 2, p.y - h / 2, w, h);
+  }
 }
 
 /* テキスト */
@@ -1203,7 +1239,7 @@ canvas.addEventListener("pointerdown", (e) => {
     return;
   }
 
-  if (ui.tool === "rect" || ui.tool === "ngon" || ui.tool === "lshape") {
+  if (["rect", "circle", "lshape", "wall"].includes(ui.tool)) {
     ui.drag = { type: "draw", x0: snapV(wpt.x), y0: snapV(wpt.y), x1: snapV(wpt.x), y1: snapV(wpt.y), elev };
     return;
   }
@@ -1355,13 +1391,24 @@ function endPointer(e) {
   }
 
   if (d.type === "draw") {
-    const wpx = Math.abs(d.x1 - d.x0), hpx = Math.abs(d.y1 - d.y0);
-    if (wpx >= GRID / 2 && hpx >= GRID / 2) {
-      pushUndo();
-      const s = newPoly(buildRings(ui.tool, d));
-      activeFloor().shapes.push(s);
-      ui.selection = [s.id];
-      renderProps();
+    if (ui.tool === "wall") {
+      /* 壁は線分の長さで判定（axis平行な壁は片方の差が0になるため） */
+      if (Math.hypot(d.x1 - d.x0, d.y1 - d.y0) >= GRID / 2) {
+        pushUndo();
+        const s = newWall(buildRings("wall", d));
+        activeFloor().shapes.push(s);
+        ui.selection = [s.id];
+        renderProps();
+      }
+    } else {
+      const wpx = Math.abs(d.x1 - d.x0), hpx = Math.abs(d.y1 - d.y0);
+      if (wpx >= GRID / 2 && hpx >= GRID / 2) {
+        pushUndo();
+        const s = newPoly(buildRings(ui.tool, d));
+        activeFloor().shapes.push(s);
+        ui.selection = [s.id];
+        renderProps();
+      }
     }
     requestRender();
   }
@@ -1393,13 +1440,28 @@ function drawDragPreview(d) {
 function buildRings(tool, d) {
   const x0 = Math.min(d.x0, d.x1), x1 = Math.max(d.x0, d.x1);
   const y0 = Math.min(d.y0, d.y1), y1 = Math.max(d.y0, d.y1);
-  if (tool === "ngon") {
-    /* 範囲に内接する六角形 */
+  if (tool === "wall") {
+    /* 壁：始点→終点の線分を、太さWALL_THICKNESSの細長い長方形にする
+       （bboxではなく実際の2点を使い、斜めの壁も引けるようにする） */
+    const ax = d.x0, ay = d.y0, bx = d.x1, by = d.y1;
+    const len = Math.hypot(bx - ax, by - ay) || 1;
+    const nx = (-(by - ay) / len) * (WALL_THICKNESS / 2);
+    const ny = ((bx - ax) / len) * (WALL_THICKNESS / 2);
+    return [[
+      [Math.round(ax + nx), Math.round(ay + ny)],
+      [Math.round(bx + nx), Math.round(by + ny)],
+      [Math.round(bx - nx), Math.round(by - ny)],
+      [Math.round(ax - nx), Math.round(ay - ny)],
+    ]];
+  }
+  if (tool === "circle") {
+    /* 範囲に内接する円／楕円（48角形で近似。押し出し・Booleanにも乗る） */
     const cx = (x0 + x1) / 2, cy = (y0 + y1) / 2;
     const rx = (x1 - x0) / 2, ry = (y1 - y0) / 2;
     const pts = [];
-    for (let i = 0; i < 6; i++) {
-      const a = -Math.PI / 2 + (i * Math.PI) / 3;
+    const N = 48;
+    for (let i = 0; i < N; i++) {
+      const a = (i / N) * Math.PI * 2;
       pts.push([Math.round(cx + rx * Math.cos(a)), Math.round(cy + ry * Math.sin(a))]);
     }
     return [pts];
@@ -1638,10 +1700,16 @@ function flipSelection(axis) {
     } else {
       if (axis === "h") s.x = 2 * cx - s.x;
       else s.y = 2 * cy - s.y;
-      /* 監視カメラは視野の向きも一緒に反転する */
-      if (s.kind === "camera") {
-        const d0 = s.dir || 0;
-        s.dir = ((axis === "h" ? 180 - d0 : 360 - d0) % 360 + 360) % 360;
+      /* アイコンは記号・3Dモデルそのものの向きも鏡映する
+         （単独選択では中心が動かないため、この反転が見た目の変化になる） */
+      if (s.type === "icon") {
+        if (axis === "h") s.flipH = !s.flipH;
+        else s.flipV = !s.flipV;
+        /* 監視カメラは視野扇形の向きも一緒に反転する */
+        if (s.kind === "camera") {
+          const d0 = s.dir || 0;
+          s.dir = ((axis === "h" ? 180 - d0 : 360 - d0) % 360 + 360) % 360;
+        }
       }
     }
   });
@@ -1670,7 +1738,12 @@ function applyBoolean(op) {
   try {
     result = op === "difference"
       ? polygonClipping.difference(geoms[0], ...geoms.slice(1))
-      : polygonClipping[op](...geoms);
+      /* 切り取り：基準図形を2つ目以降の形の内側だけ残す（交差）。
+         「抽出」と幾何は同じだが、最初の図形のスタイルを残して
+         残りは切り口の型として捨てる、という使い方を明示する */
+      : op === "crop"
+        ? polygonClipping.intersection(...geoms)
+        : polygonClipping[op](...geoms);
   } catch (err) {
     undoStack.pop(); // 失敗時はUndo履歴を戻す
     showHint("演算に失敗しました：" + err.message);
@@ -1747,8 +1820,9 @@ function showHint(text, sticky = false) {
 const TOOL_HINTS = {
   select: "クリックで選択、ドラッグで移動。Shift＋クリックで複数選択。ダブルクリックで頂点編集。",
   rect: "ドラッグで矩形を描きます。",
-  ngon: "ドラッグで六角形を描きます。",
+  circle: "ドラッグで円／楕円を描きます。",
   lshape: "ドラッグでL字形を描きます。",
+  wall: "ドラッグで壁（直線）を引きます。3D視点では立ち上がった壁になります。",
   free: "クリックで頂点を追加、ダブルクリックまたはEnterで確定。",
   text: "配置したい位置をクリックしてください。",
   icon: "配置したい位置をクリックしてください。",
@@ -2043,17 +2117,18 @@ function renderLayersPanel() {
   });
 }
 
-/* ≡ハンドルのドラッグ並べ替え（Pointer Eventsでマウス・タッチ両対応） */
+/* ≡ハンドルのドラッグ並べ替え（Pointer Eventsでマウス・タッチ両対応）。
+   並べ替え中は row 自体をDOMで動かすため、ハンドルへの setPointerCapture は
+   行が再挿入された瞬間に解除されてしまう（＝マウスで動かない不具合の原因）。
+   そこで move/up は window で受け、DOMの移動に影響されないようにする。 */
 function bindLayerDrag(handle, row, list) {
   handle.addEventListener("pointerdown", (e) => {
     e.preventDefault();
     e.stopPropagation();
-    try { handle.setPointerCapture(e.pointerId); } catch (_) {}
     let dragged = false;
 
     const onMove = (ev) => {
-      dragged = true;
-      row.classList.add("is-dragging");
+      if (!dragged) { dragged = true; row.classList.add("is-dragging"); }
       /* ポインタ位置より中点が下にある最初の行の前へ差し込む */
       let before = null;
       for (const r of list.children) {
@@ -2065,9 +2140,9 @@ function bindLayerDrag(handle, row, list) {
     };
 
     const onUp = () => {
-      handle.removeEventListener("pointermove", onMove);
-      handle.removeEventListener("pointerup", onUp);
-      handle.removeEventListener("pointercancel", onUp);
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+      window.removeEventListener("pointercancel", onUp);
       row.classList.remove("is-dragging");
       if (!dragged) return;
       /* DOMの並び（上＝前面）を配列の並び（末尾＝前面）へ反映する */
@@ -2077,9 +2152,9 @@ function bindLayerDrag(handle, row, list) {
       requestRender();
     };
 
-    handle.addEventListener("pointermove", onMove);
-    handle.addEventListener("pointerup", onUp);
-    handle.addEventListener("pointercancel", onUp);
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+    window.addEventListener("pointercancel", onUp);
   });
 }
 

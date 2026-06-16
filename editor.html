@@ -108,13 +108,17 @@
           <svg viewBox="0 0 24 24"><rect x="4" y="6" width="16" height="12" fill="none" stroke="currentColor" stroke-width="1.8"/></svg>
           <span>矩形</span>
         </button>
-        <button class="ed-tool" data-tool="ngon" title="多角形（六角形）">
-          <svg viewBox="0 0 24 24"><polygon points="12,3 20,8 20,16 12,21 4,16 4,8" fill="none" stroke="currentColor" stroke-width="1.8"/></svg>
-          <span>多角形</span>
+        <button class="ed-tool" data-tool="circle" title="円 / 楕円">
+          <svg viewBox="0 0 24 24"><ellipse cx="12" cy="12" rx="8.5" ry="8.5" fill="none" stroke="currentColor" stroke-width="1.8"/></svg>
+          <span>円</span>
         </button>
         <button class="ed-tool" data-tool="lshape" title="L字">
           <svg viewBox="0 0 24 24"><path d="M5 4h7v9h7v7H5z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>
           <span>L字</span>
+        </button>
+        <button class="ed-tool" data-tool="wall" title="壁（直線）：ドラッグで壁を引く。3Dで立ち上がる">
+          <svg viewBox="0 0 24 24"><path d="M4 12h16" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round"/></svg>
+          <span>壁</span>
         </button>
         <button class="ed-tool" data-tool="free" title="自由多角形（クリックで頂点追加、ダブルクリックで確定）">
           <svg viewBox="0 0 24 24"><path d="M4 16l5-10 6 4 5-4v12z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><circle cx="4" cy="16" r="1.6" fill="currentColor"/><circle cx="9" cy="6" r="1.6" fill="currentColor"/><circle cx="20" cy="6" r="1.6" fill="currentColor"/></svg>
@@ -144,6 +148,10 @@
         <button class="ed-tool ed-bool" data-bool="xor" title="重なり除外（Exclude）">
           <svg viewBox="0 0 24 24"><path d="M4 4h11v5h-6v6H4z" fill="currentColor" opacity="0.25"/><path d="M20 20H9v-5h6V9h5z" fill="currentColor" opacity="0.25"/><path d="M4 4h11v5h5v11H9v-5H4z" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M9 9h6v6H9z" fill="none" stroke="currentColor" stroke-width="1.6"/></svg>
           <span>除外</span>
+        </button>
+        <button class="ed-tool ed-bool" data-bool="crop" title="切り取り：最初に選んだ図形を、2つ目の図形の形で切り取る（設置済みの図形を後から整える）">
+          <svg viewBox="0 0 24 24"><path d="M7 2v15h15" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M2 7h15v15" fill="none" stroke="currentColor" stroke-width="1.6"/><rect x="7" y="7" width="10" height="10" fill="currentColor" opacity="0.25"/></svg>
+          <span>切り取り</span>
         </button>
       </div>
 
@@ -319,7 +327,8 @@
         <section>
           <h3>図形を描く</h3>
           <table><tbody>
-            <tr><td>矩形・多角形・L字</td><td>ツールを選び、キャンバス上をドラッグ。</td></tr>
+            <tr><td>矩形・円・L字</td><td>ツールを選び、キャンバス上をドラッグ。</td></tr>
+            <tr><td>壁（直線）</td><td>「壁」を選び、引きたい方向へドラッグ。平面では太い直線、3D視点では立ち上がった壁になる。</td></tr>
             <tr><td>自由多角形</td><td>「自由」を選びクリックで頂点を追加。ダブルクリックか<kbd>Enter</kbd>で確定。</td></tr>
             <tr><td>形を変える</td><td>図形をダブルクリック→白い頂点ハンドルをドラッグ。空クリックで終了。</td></tr>
             <tr><td>厚みを付ける</td><td>図形を選択→右パネルの「厚み」に数値入力。3D視点で立体になる。</td></tr>
@@ -331,8 +340,9 @@
             <tr><td>選択 / 移動</td><td>クリックで選択、そのままドラッグで移動。</td></tr>
             <tr><td><strong>複数選択</strong></td><td><kbd>Shift</kbd>＋クリックで追加・解除。または左の「複数選択」をONにしてクリック。<kbd>Ctrl</kbd>+<kbd>A</kbd>で階の全選択。</td></tr>
             <tr><td>図形の結合</td><td>2つ以上選択→左の「接合 / 型抜き / 抽出 / 除外」。<strong>最初に選んだ図形が型抜きの土台</strong>になる。</td></tr>
+            <tr><td>切り取り</td><td>整えたい図形→形の型にする図形の順で2つ選択→左の「切り取り」。最初の図形が2つ目の形の内側だけに整えられる。</td></tr>
             <tr><td>複製 / 削除</td><td><kbd>Ctrl</kbd>+<kbd>D</kbd>で複製、<kbd>Delete</kbd>で削除。左のボタンでも可。</td></tr>
-            <tr><td>左右 / 上下反転</td><td>図形を選択→左の「左右反転 / 上下反転」。複数選択なら範囲全体の中心で反転。</td></tr>
+            <tr><td>左右 / 上下反転</td><td>図形を選択→左の「左右反転 / 上下反転」。アイコンは記号自体の向きも反転（扉の開き勝手など）。複数選択なら範囲全体の中心で反転。</td></tr>
             <tr><td>個別に回転</td><td>図形やアイコンを選択→右パネルの「回転 X / Y / Z」。その図形だけ角度を変えられる。</td></tr>
             <tr><td>高さ位置</td><td>図形やアイコンを選択→右パネルの「高さ位置」スライダー。立方体の上に物を載せるなど、床から浮かせられる（3D視点で反映）。</td></tr>
             <tr><td>前面 / 背面</td><td>右パネルの「Objects」一覧（最前面が一番上）。右の ≡ をドラッグして重なり順を入れ替え。</td></tr>
@@ -366,7 +376,7 @@
         <section>
           <h3>図形を描く</h3>
           <table><tbody>
-            <tr><td>矩形・多角形・L字</td><td>下のツールを選び、キャンバスを指でドラッグ。</td></tr>
+            <tr><td>矩形・円・L字・壁</td><td>下のツールを選び、キャンバスを指でドラッグ。「壁」は直線、3Dで立ち上がる。</td></tr>
             <tr><td>自由多角形</td><td>「自由」を選びタップで頂点を追加。<strong>描き終えたら「選択」ツールをタップすると確定</strong>（ダブルタップでも可）。</td></tr>
             <tr><td>形を変える</td><td>図形をダブルタップ→白い頂点ハンドルを指でドラッグ。何もない場所をタップで終了。</td></tr>
           </tbody></table>
